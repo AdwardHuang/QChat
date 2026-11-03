@@ -1644,6 +1644,246 @@
 
     checkLogin();
 </script>
+<script>
+    (function () {
+        "use strict";
 
+        const inputRow = document.querySelector(".chat-input-row");
+        const chatInputElement = document.getElementById("chatInput");
+        const chatInputArea = document.querySelector(".chat-input-area");
+
+        if (!inputRow || !chatInputElement || !chatInputArea) {
+            console.error("文件消息初始化失败：找不到聊天输入区域");
+            return;
+        }
+
+        // 文件选择按钮
+        const fileButton = document.createElement("button");
+        fileButton.type = "button";
+        fileButton.textContent = "文件";
+        fileButton.style.width = "70px";
+        fileButton.style.flexShrink = "0";
+        fileButton.title = "选择文件并发送";
+
+        // 隐藏的文件选择框
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.style.display = "none";
+
+        // 文件上传状态
+        const fileStatus = document.createElement("div");
+        fileStatus.style.marginTop = "6px";
+        fileStatus.style.fontSize = "12px";
+        fileStatus.style.color = "#8490a0";
+        fileStatus.textContent = "单个文件最大 20 MB";
+
+        inputRow.insertBefore(fileButton, chatInputElement);
+        chatInputArea.appendChild(fileInput);
+        chatInputArea.appendChild(fileStatus);
+
+        function setFileStatus(message, isError) {
+            fileStatus.textContent = message;
+            fileStatus.style.color = isError ? "#d44" : "#8490a0";
+        }
+
+        function formatFileSize(size) {
+            size = Number(size || 0);
+
+            if (size < 1024) {
+                return size + " B";
+            }
+            if (size < 1024 * 1024) {
+                return (size / 1024).toFixed(1) + " KB";
+            }
+            return (size / 1024 / 1024).toFixed(2) + " MB";
+        }
+
+        function sendUploadedFile(fileData) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                throw new Error("WebSocket 未连接，文件已经上传，但尚未发送到聊天");
+            }
+
+            if (activePeer) {
+                socket.send(JSON.stringify({
+                    type: "private_file_message",
+                    receiver_id: Number(activePeer.id),
+                    file_id: Number(fileData.id)
+                }));
+            } else {
+                socket.send(JSON.stringify({
+                    type: "file_message",
+                    file_id: Number(fileData.id)
+                }));
+            }
+        }
+
+        async function uploadAndSendFile(file) {
+            if (!currentUser) {
+                setFileStatus("请先登录", true);
+                return;
+            }
+
+            if (file.size <= 0) {
+                setFileStatus("不能发送空文件", true);
+                return;
+            }
+
+            if (file.size > 20 * 1024 * 1024) {
+                setFileStatus("文件超过 20 MB，无法上传", true);
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                setFileStatus("WebSocket 未连接，请稍后重试", true);
+                return;
+            }
+
+            fileButton.disabled = true;
+            fileInput.disabled = true;
+            setFileStatus("正在上传：" + file.name, false);
+
+            try {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                const response = await fetch("/api/files/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                let result;
+                try {
+                    result = await response.json();
+                } catch (error) {
+                    throw new Error("服务器返回了无法识别的数据");
+                }
+
+                if (!response.ok || !result.success || !result.data) {
+                    throw new Error(result.message || "文件上传失败");
+                }
+
+                const fileData = result.data;
+
+                if (!fileData.id) {
+                    throw new Error("上传成功，但服务器没有返回文件 ID");
+                }
+
+                setFileStatus("上传完成，正在发送文件消息...", false);
+
+                sendUploadedFile(fileData);
+
+                setFileStatus(
+                    "文件已发送：" + fileData.original_name +
+                    "（" + formatFileSize(fileData.size) + "）",
+                    false
+                );
+            } catch (error) {
+                console.error("文件发送失败", error);
+                setFileStatus(error.message || "文件发送失败", true);
+            } finally {
+                fileButton.disabled = false;
+                fileInput.disabled = false;
+                fileInput.value = "";
+            }
+        }
+
+        fileButton.addEventListener("click", function () {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener("change", function () {
+            const file = fileInput.files && fileInput.files[0];
+
+            if (file) {
+                uploadAndSendFile(file);
+            }
+        });
+
+        // 保存原来的消息渲染方法
+        const originalCreateMessageElement = createMessageElement;
+
+        // 增强消息渲染：识别文件消息
+        createMessageElement = function (message, isPrivate) {
+            let fileData = null;
+
+            try {
+                const parsed = JSON.parse(message.content);
+                if (parsed && parsed.type === "file") {
+                    fileData = parsed;
+                }
+            } catch (error) {
+                // 普通文本消息，不需要处理
+            }
+
+            if (!fileData) {
+                return originalCreateMessageElement(message, isPrivate);
+            }
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "chat-message";
+
+            const senderId = isPrivate ? message.sender_id : message.user_id;
+            const senderName = isPrivate ? message.sender_name : message.username;
+
+            if (currentUser && Number(senderId) === Number(currentUser.id)) {
+                wrapper.classList.add("mine");
+            }
+
+            const info = document.createElement("div");
+            info.className = "message-info";
+
+            const date = new Date(Number(message.created_at) * 1000);
+            info.textContent = senderName + " · " + date.toLocaleString();
+
+            const card = document.createElement("div");
+            card.className = "message-content";
+            card.style.display = "inline-flex";
+            card.style.alignItems = "center";
+            card.style.gap = "12px";
+            card.style.minWidth = "220px";
+
+            const fileIcon = document.createElement("span");
+            fileIcon.textContent = "📎";
+            fileIcon.style.fontSize = "26px";
+
+            const details = document.createElement("div");
+            details.style.minWidth = "0";
+
+            const fileName = document.createElement("div");
+            fileName.textContent = fileData.original_name || "未知文件";
+            fileName.style.fontWeight = "bold";
+            fileName.style.overflowWrap = "anywhere";
+
+            const fileSize = document.createElement("div");
+            fileSize.textContent = formatFileSize(fileData.size);
+            fileSize.style.fontSize = "12px";
+            fileSize.style.opacity = "0.8";
+            fileSize.style.marginTop = "4px";
+
+            const downloadLink = document.createElement("a");
+            downloadLink.textContent = "下载文件";
+            downloadLink.href = "/api/files/" + encodeURIComponent(fileData.file_id);
+            downloadLink.download = fileData.original_name || "download";
+            downloadLink.style.display = "inline-block";
+            downloadLink.style.marginTop = "6px";
+            downloadLink.style.fontSize = "12px";
+            downloadLink.style.color = "inherit";
+
+            details.appendChild(fileName);
+            details.appendChild(fileSize);
+            details.appendChild(downloadLink);
+
+            card.appendChild(fileIcon);
+            card.appendChild(details);
+
+            wrapper.appendChild(info);
+            wrapper.appendChild(card);
+
+            return wrapper;
+        };
+
+        console.log("QChat 文件消息功能已初始化");
+    })();
+</script>
 </body>
 </html>

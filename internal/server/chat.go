@@ -41,6 +41,7 @@ type ChatInput struct {
 	Type       string `json:"type"`
 	Content    string `json:"content"`
 	ReceiverID int64  `json:"receiver_id"`
+	FileID     int64  `json:"file_id"`
 }
 
 type OnlineUser struct {
@@ -67,7 +68,6 @@ func NewChatHub(store *database.Store) *ChatHub {
 func (h *ChatHub) AddClient(client *ChatClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
 	h.clients[client] = struct{}{}
 }
 
@@ -82,10 +82,8 @@ func (h *ChatHub) RemoveClient(client *ChatClient) {
 }
 
 // DisconnectUser 断开指定用户的全部 WebSocket 连接。
-// 同一账号在多个浏览器登录时，所有连接都会被关闭。
 func (h *ChatHub) DisconnectUser(userID int64) {
 	removed := false
-
 	h.mu.Lock()
 
 	for client := range h.clients {
@@ -111,14 +109,12 @@ func (h *ChatHub) Broadcast(message *database.Message) {
 		Type:    "message",
 		Message: message,
 	})
-
 	if err != nil {
 		log.Println("消息序列化失败:", err)
 		return
 	}
 
 	removed := false
-
 	h.mu.Lock()
 
 	for client := range h.clients {
@@ -141,25 +137,21 @@ func (h *ChatHub) Broadcast(message *database.Message) {
 }
 
 // 向私聊双方的所有在线连接推送消息。
-// 同一账号在多个浏览器登录时，所有浏览器都会收到。
 func (h *ChatHub) BroadcastPrivateMessage(message *database.PrivateMessage) {
 	data, err := json.Marshal(ChatOutput{
 		Type:           "private_message",
 		PrivateMessage: message,
 	})
-
 	if err != nil {
 		log.Println("私聊消息序列化失败:", err)
 		return
 	}
 
 	removed := false
-
 	h.mu.Lock()
 
 	for client := range h.clients {
-		if client.user.ID != message.SenderID &&
-			client.user.ID != message.ReceiverID {
+		if client.user.ID != message.SenderID && client.user.ID != message.ReceiverID {
 			continue
 		}
 
@@ -186,7 +178,6 @@ func (h *ChatHub) SendError(client *ChatClient, message string) {
 		Type:  "error",
 		Error: message,
 	})
-
 	if err != nil {
 		return
 	}
@@ -203,7 +194,6 @@ func (h *ChatHub) OnlineUsers() []OnlineUser {
 	defer h.mu.Unlock()
 
 	userMap := make(map[int64]OnlineUser)
-
 	for client := range h.clients {
 		userMap[client.user.ID] = OnlineUser{
 			ID:       client.user.ID,
@@ -212,7 +202,6 @@ func (h *ChatHub) OnlineUsers() []OnlineUser {
 	}
 
 	users := make([]OnlineUser, 0, len(userMap))
-
 	for _, user := range userMap {
 		users = append(users, user)
 	}
@@ -238,7 +227,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 	}
 
 	userMap := make(map[int64]OnlineUser)
-
 	for client := range h.clients {
 		userMap[client.user.ID] = OnlineUser{
 			ID:       client.user.ID,
@@ -247,7 +235,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 	}
 
 	users := make([]OnlineUser, 0, len(userMap))
-
 	for _, user := range userMap {
 		users = append(users, user)
 	}
@@ -261,7 +248,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 		Users: users,
 		Count: len(users),
 	})
-
 	if err != nil {
 		log.Println("在线用户列表序列化失败:", err)
 		return
@@ -301,18 +287,13 @@ func (h *ChatHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go client.writePump()
 	go client.readPump()
 
-	log.Printf("用户 %s 加入聊天室，当前 WebSocket 连接数 %d",
-		user.Username,
-		h.ClientCount(),
-	)
-
+	log.Printf("用户 %s 加入聊天室，当前 WebSocket 连接数 %d", user.Username, h.ClientCount())
 	h.BroadcastOnlineUsers()
 }
 
 func (h *ChatHub) ClientCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
 	return len(h.clients)
 }
 
@@ -334,11 +315,7 @@ func (c *ChatClient) readPump() {
 		c.hub.RemoveClient(c)
 		_ = c.conn.Close()
 
-		log.Printf("用户 %s 离开聊天室，当前 WebSocket 连接数 %d",
-			c.user.Username,
-			c.hub.ClientCount(),
-		)
-
+		log.Printf("用户 %s 离开聊天室，当前 WebSocket 连接数 %d", c.user.Username, c.hub.ClientCount())
 		c.hub.BroadcastOnlineUsers()
 	}()
 
@@ -367,16 +344,18 @@ func (c *ChatClient) readPump() {
 		switch input.Type {
 		case "message":
 			c.handlePublicMessage(input.Content)
-
 		case "private_message":
 			c.handlePrivateMessage(input.ReceiverID, input.Content)
+		case "file_message":
+			c.handlePublicFileMessage(input.FileID)
+		case "private_file_message":
+			c.handlePrivateFileMessage(input.ReceiverID, input.FileID)
 		}
 	}
 }
 
 func (c *ChatClient) handlePublicMessage(content string) {
 	content = strings.TrimSpace(content)
-
 	if content == "" {
 		return
 	}
@@ -386,12 +365,7 @@ func (c *ChatClient) handlePublicMessage(content string) {
 		content = string(runes[:2000])
 	}
 
-	message, err := c.hub.store.CreateMessage(
-		context.Background(),
-		c.user.ID,
-		content,
-	)
-
+	message, err := c.hub.store.CreateMessage(context.Background(), c.user.ID, content)
 	if err != nil {
 		log.Println("保存公共消息失败:", err)
 		c.hub.SendError(c, "公共消息发送失败")
@@ -408,12 +382,10 @@ func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
 		c.hub.SendError(c, "接收者无效")
 		return
 	}
-
 	if receiverID == c.user.ID {
 		c.hub.SendError(c, "不能向自己发送私聊消息")
 		return
 	}
-
 	if content == "" {
 		return
 	}
@@ -423,27 +395,56 @@ func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
 		content = string(runes[:2000])
 	}
 
-	message, err := c.hub.store.CreatePrivateMessage(
-		context.Background(),
-		c.user.ID,
-		receiverID,
-		content,
-	)
-
+	message, err := c.hub.store.CreatePrivateMessage(context.Background(), c.user.ID, receiverID, content)
 	if err != nil {
 		log.Println("保存私聊消息失败:", err)
 		c.hub.SendError(c, "私聊消息发送失败")
 		return
 	}
 
-	// 发送者和接收者的所有在线连接都会收到消息。
-	// 接收者离线时，消息仍然保存在数据库中。
+	c.hub.BroadcastPrivateMessage(message)
+}
+
+// handlePublicFileMessage 将已上传的文件作为公共聊天消息发送。
+func (c *ChatClient) handlePublicFileMessage(fileID int64) {
+	if fileID <= 0 {
+		c.hub.SendError(c, "文件 ID 无效")
+		return
+	}
+
+	message, err := c.hub.store.CreatePublicFileMessage(context.Background(), c.user.ID, fileID)
+	if err != nil {
+		log.Println("发送公共文件消息失败:", err)
+		c.hub.SendError(c, "文件消息发送失败，请确认文件存在且属于当前用户")
+		return
+	}
+
+	c.hub.Broadcast(message)
+}
+
+// handlePrivateFileMessage 将已上传的文件作为私聊消息发送。
+func (c *ChatClient) handlePrivateFileMessage(receiverID, fileID int64) {
+	if receiverID <= 0 || receiverID == c.user.ID {
+		c.hub.SendError(c, "私聊接收者无效")
+		return
+	}
+	if fileID <= 0 {
+		c.hub.SendError(c, "文件 ID 无效")
+		return
+	}
+
+	message, err := c.hub.store.CreatePrivateFileMessage(context.Background(), c.user.ID, receiverID, fileID)
+	if err != nil {
+		log.Println("发送私聊文件消息失败:", err)
+		c.hub.SendError(c, "私聊文件发送失败，请确认接收者和文件有效")
+		return
+	}
+
 	c.hub.BroadcastPrivateMessage(message)
 }
 
 func (c *ChatClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
-
 	defer func() {
 		ticker.Stop()
 		_ = c.conn.Close()
@@ -453,19 +454,16 @@ func (c *ChatClient) writePump() {
 		select {
 		case message, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -483,7 +481,6 @@ var upgrader = websocket.Upgrader{
 
 func parseBeforeID(r *http.Request) int64 {
 	value := r.URL.Query().Get("before_id")
-
 	if value == "" {
 		return 0
 	}
