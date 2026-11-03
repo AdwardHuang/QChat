@@ -34,8 +34,13 @@ func (s *Server) WithFileUploads(next http.Handler, uploadDir string) http.Handl
 		switch {
 		case r.URL.Path == "/api/files/upload":
 			s.handleFileUpload(w, r, uploadDir)
+
+		case strings.HasPrefix(r.URL.Path, "/api/files/messages/"):
+			s.handleFileMessageDelete(w, r, uploadDir)
+
 		case strings.HasPrefix(r.URL.Path, "/api/files/"):
 			s.handleFileDownload(w, r, uploadDir)
+
 		default:
 			next.ServeHTTP(w, r)
 		}
