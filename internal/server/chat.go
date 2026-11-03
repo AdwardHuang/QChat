@@ -81,6 +81,31 @@ func (h *ChatHub) RemoveClient(client *ChatClient) {
 	}
 }
 
+// DisconnectUser 断开指定用户的全部 WebSocket 连接。
+// 同一账号在多个浏览器登录时，所有连接都会被关闭。
+func (h *ChatHub) DisconnectUser(userID int64) {
+	removed := false
+
+	h.mu.Lock()
+
+	for client := range h.clients {
+		if client.user.ID != userID {
+			continue
+		}
+
+		delete(h.clients, client)
+		close(client.send)
+		_ = client.conn.Close()
+		removed = true
+	}
+
+	h.mu.Unlock()
+
+	if removed {
+		h.BroadcastOnlineUsers()
+	}
+}
+
 func (h *ChatHub) Broadcast(message *database.Message) {
 	data, err := json.Marshal(ChatOutput{
 		Type:    "message",
@@ -335,7 +360,6 @@ func (c *ChatClient) readPump() {
 		}
 
 		var input ChatInput
-
 		if err := json.Unmarshal(data, &input); err != nil {
 			continue
 		}

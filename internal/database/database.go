@@ -3,11 +3,19 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite"
+)
+
+var (
+	ErrUserNotFound   = errors.New("用户不存在")
+	ErrUsernameExists = errors.New("用户名已存在")
+	ErrLastAdmin      = errors.New("不能禁用最后一个管理员")
+	ErrInvalidUser    = errors.New("无效的用户")
 )
 
 type Store struct {
@@ -18,6 +26,9 @@ type User struct {
 	ID           int64  `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"`
+	IsAdmin      bool   `json:"is_admin"`
+	IsActive     bool   `json:"is_active"`
+	CreatedAt    int64  `json:"created_at"`
 }
 
 type Message struct {
@@ -42,7 +53,6 @@ type PrivateMessage struct {
 
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
-
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建数据库目录失败: %w", err)
 	}
@@ -60,23 +70,20 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("连接数据库失败: %w", err)
 	}
 
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
-		db.Close()
-		return nil, err
+	pragmas := []string{
+		`PRAGMA journal_mode=WAL`,
+		`PRAGMA foreign_keys=ON`,
+		`PRAGMA busy_timeout=5000`,
 	}
 
-	if _, err := db.Exec(`PRAGMA foreign_keys=ON`); err != nil {
-		db.Close()
-		return nil, err
-	}
-
-	if _, err := db.Exec(`PRAGMA busy_timeout=5000`); err != nil {
-		db.Close()
-		return nil, err
+	for _, pragma := range pragmas {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("设置数据库参数失败: %w", err)
+		}
 	}
 
 	store := &Store{db: db}
-
 	if err := store.initTables(); err != nil {
 		db.Close()
 		return nil, err
@@ -89,146 +96,453 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// initTables 初始化数据库表，并兼容旧版本数据库。
 func (s *Store) initTables() error {
 	sqlText := `
-	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		username TEXT NOT NULL UNIQUE,
-		password_hash TEXT NOT NULL,
-		created_at INTEGER NOT NULL
-	);
+CREATE TABLE IF NOT EXISTS users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	username TEXT NOT NULL UNIQUE,
+	password_hash TEXT NOT NULL,
+	created_at INTEGER NOT NULL
+);
 
-	CREATE TABLE IF NOT EXISTS sessions (
-		token_hash TEXT PRIMARY KEY,
-		user_id INTEGER NOT NULL,
-		expires_at INTEGER NOT NULL,
-		created_at INTEGER NOT NULL,
-		FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-	);
+CREATE TABLE IF NOT EXISTS sessions (
+	token_hash TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	created_at INTEGER NOT NULL,
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
-	CREATE INDEX IF NOT EXISTS idx_sessions_user_id
-	ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+ON sessions(user_id);
 
-	CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
-	ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+ON sessions(expires_at);
 
-	CREATE TABLE IF NOT EXISTS messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		content TEXT NOT NULL,
-		created_at INTEGER NOT NULL,
-		FOREIGN KEY(user_id) REFERENCES users(id)
-	);
+CREATE TABLE IF NOT EXISTS messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id INTEGER NOT NULL,
+	content TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	FOREIGN KEY(user_id) REFERENCES users(id)
+);
 
-	-- 私聊消息表
-	CREATE TABLE IF NOT EXISTS private_messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		sender_id INTEGER NOT NULL,
-		receiver_id INTEGER NOT NULL,
-		content TEXT NOT NULL,
-		created_at INTEGER NOT NULL,
-		is_read INTEGER NOT NULL DEFAULT 0,
-		CHECK(sender_id <> receiver_id),
-		FOREIGN KEY(sender_id) REFERENCES users(id),
-		FOREIGN KEY(receiver_id) REFERENCES users(id)
-	);
+CREATE TABLE IF NOT EXISTS private_messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	sender_id INTEGER NOT NULL,
+	receiver_id INTEGER NOT NULL,
+	content TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	is_read INTEGER NOT NULL DEFAULT 0,
+	CHECK(sender_id <> receiver_id),
+	FOREIGN KEY(sender_id) REFERENCES users(id),
+	FOREIGN KEY(receiver_id) REFERENCES users(id)
+);
 
-	CREATE INDEX IF NOT EXISTS idx_private_messages_sender_receiver
-	ON private_messages(sender_id, receiver_id, id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_sender_receiver
+ON private_messages(sender_id, receiver_id, id);
 
-	CREATE INDEX IF NOT EXISTS idx_private_messages_receiver_sender
-	ON private_messages(receiver_id, sender_id, id);
+CREATE INDEX IF NOT EXISTS idx_private_messages_receiver_sender
+ON private_messages(receiver_id, sender_id, id);
 
-	CREATE INDEX IF NOT EXISTS idx_private_messages_unread
-	ON private_messages(receiver_id, sender_id, is_read);
-	`
+CREATE INDEX IF NOT EXISTS idx_private_messages_unread
+ON private_messages(receiver_id, sender_id, is_read);
+`
 
-	_, err := s.db.Exec(sqlText)
-	if err != nil {
+	if _, err := s.db.Exec(sqlText); err != nil {
 		return fmt.Errorf("初始化数据库表失败: %w", err)
 	}
 
+	if err := s.migrateUserColumns(); err != nil {
+		return fmt.Errorf("迁移用户表失败: %w", err)
+	}
+
 	return nil
 }
 
-func (s *Store) CreateAdminIfEmpty(ctx context.Context, username, passwordHash string) error {
-	var count int
+// migrateUserColumns 为旧数据库增加管理员和账号状态字段。
+func (s *Store) migrateUserColumns() error {
+	columns := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "is_admin",
+			sql:  `ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`,
+		},
+		{
+			name: "is_active",
+			sql:  `ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`,
+		},
+	}
 
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+	for _, column := range columns {
+		exists, err := s.hasColumn("users", column.name)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			if _, err := s.db.Exec(column.sql); err != nil {
+				return fmt.Errorf("增加字段 %s 失败: %w", column.name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) hasColumn(tableName, columnName string) (bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(` + tableName + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+
+		if name == columnName {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
+}
+
+// CreateAdminIfEmpty 初始化管理员。
+// 如果数据库为空，则创建配置文件指定的管理员。
+// 如果是旧数据库且没有管理员，则将最早创建的用户提升为管理员。
+func (s *Store) CreateAdminIfEmpty(ctx context.Context, username, passwordHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
 		return err
 	}
 
-	if count > 0 {
-		return nil
+	if count == 0 {
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO users(username, password_hash, created_at, is_admin, is_active)
+			 VALUES(?, ?, unixepoch(), 1, 1)`,
+			username, passwordHash,
+		)
+		if err != nil {
+			return fmt.Errorf("创建管理员账号失败: %w", err)
+		}
+	} else {
+		var adminCount int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM users WHERE is_admin = 1`,
+		).Scan(&adminCount); err != nil {
+			return err
+		}
+
+		if adminCount == 0 {
+			_, err := tx.ExecContext(ctx,
+				`UPDATE users
+				 SET is_admin = 1
+				 WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)`,
+			)
+			if err != nil {
+				return fmt.Errorf("迁移旧管理员账号失败: %w", err)
+			}
+		}
 	}
 
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users(username, password_hash, created_at) VALUES(?, ?, unixepoch())`,
-		username, passwordHash)
-
-	if err != nil {
-		return fmt.Errorf("创建管理员账号失败: %w", err)
-	}
-
-	return nil
+	return tx.Commit()
 }
 
+// FindUserByUsername 根据用户名查询用户。
 func (s *Store) FindUserByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
+	var isAdmin, isActive int
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, username, password_hash FROM users WHERE username = ?`,
+		`SELECT id, username, password_hash, is_admin, is_active, created_at
+		 FROM users WHERE username = ?`,
 		username,
-	).Scan(&user.ID, &user.Username, &user.PasswordHash)
-
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&user.PasswordHash,
+		&isAdmin,
+		&isActive,
+		&user.CreatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
+	user.IsAdmin = isAdmin != 0
+	user.IsActive = isActive != 0
+
 	return &user, nil
 }
 
+// CreateUser 创建普通用户。
+func (s *Store) CreateUser(ctx context.Context, username, passwordHash string) (*User, error) {
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO users(username, password_hash, created_at, is_admin, is_active)
+		 VALUES(?, ?, unixepoch(), 0, 1)`,
+		username, passwordHash,
+	)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrUsernameExists
+		}
+		return nil, fmt.Errorf("创建用户失败: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetUserByID(ctx, id)
+}
+
+// GetUserByID 根据用户 ID 查询用户。
+func (s *Store) GetUserByID(ctx context.Context, userID int64) (*User, error) {
+	var user User
+	var isAdmin, isActive int
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, username, is_admin, is_active, created_at
+		 FROM users WHERE id = ?`,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&isAdmin,
+		&isActive,
+		&user.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	user.IsAdmin = isAdmin != 0
+	user.IsActive = isActive != 0
+
+	return &user, nil
+}
+
+// ListUsers 查询全部用户，按 ID 排序。
+func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, username, is_admin, is_active, created_at
+		 FROM users ORDER BY id ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("查询用户列表失败: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]User, 0)
+
+	for rows.Next() {
+		var user User
+		var isAdmin, isActive int
+
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&isAdmin,
+			&isActive,
+			&user.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		user.IsAdmin = isAdmin != 0
+		user.IsActive = isActive != 0
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// UpdateUserPassword 修改用户密码，并使该用户所有旧会话失效。
+func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ?`,
+		passwordHash, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("更新用户密码失败: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrUserNotFound
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM sessions WHERE user_id = ?`,
+		userID,
+	); err != nil {
+		return fmt.Errorf("清除用户会话失败: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// SetUserActive 设置用户启用或禁用状态。
+// 禁用用户时同时删除其所有登录会话。
+func (s *Store) SetUserActive(ctx context.Context, userID int64, active bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var isAdmin int
+	err = tx.QueryRowContext(ctx,
+		`SELECT is_admin FROM users WHERE id = ?`,
+		userID,
+	).Scan(&isAdmin)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+
+	if !active && isAdmin != 0 {
+		var adminCount int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1`,
+		).Scan(&adminCount); err != nil {
+			return err
+		}
+
+		if adminCount <= 1 {
+			return ErrLastAdmin
+		}
+	}
+
+	activeValue := 0
+	if active {
+		activeValue = 1
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE users SET is_active = ? WHERE id = ?`,
+		activeValue, userID,
+	); err != nil {
+		return fmt.Errorf("更新用户状态失败: %w", err)
+	}
+
+	if !active {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM sessions WHERE user_id = ?`,
+			userID,
+		); err != nil {
+			return fmt.Errorf("清除用户会话失败: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// CreateSession 创建登录会话。
 func (s *Store) CreateSession(ctx context.Context, tokenHash string, userID int64, expiresAt int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO sessions(token_hash, user_id, expires_at, created_at)
 		 VALUES(?, ?, ?, unixepoch())`,
-		tokenHash, userID, expiresAt)
-
+		tokenHash, userID, expiresAt,
+	)
 	return err
 }
 
+// FindSessionUser 根据会话查询用户。
+// 禁用账号不能继续使用已有会话。
 func (s *Store) FindSessionUser(ctx context.Context, tokenHash string, now int64) (*User, error) {
 	var user User
+	var isAdmin, isActive int
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT u.id, u.username
+		`SELECT u.id, u.username, u.is_admin, u.is_active, u.created_at
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
-		 WHERE s.token_hash = ? AND s.expires_at > ?`,
+		 WHERE s.token_hash = ?
+		   AND s.expires_at > ?
+		   AND u.is_active = 1`,
 		tokenHash, now,
-	).Scan(&user.ID, &user.Username)
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&isAdmin,
+		&isActive,
+		&user.CreatedAt,
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
+	user.IsAdmin = isAdmin != 0
+	user.IsActive = isActive != 0
+
 	return &user, nil
 }
 
+// DeleteSession 删除指定会话。
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM sessions WHERE token_hash = ?`,
-		tokenHash)
-
+		tokenHash,
+	)
 	return err
 }
 
+// DeleteUserSessions 删除用户的全部会话。
+func (s *Store) DeleteUserSessions(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM sessions WHERE user_id = ?`,
+		userID,
+	)
+	return err
+}
+
+// CreateMessage 保存公共消息。
 func (s *Store) CreateMessage(ctx context.Context, userID int64, content string) (*Message, error) {
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO messages(user_id, content, created_at)
 		 VALUES(?, ?, unixepoch())`,
-		userID, content)
-
+		userID, content,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("保存消息失败: %w", err)
 	}
@@ -239,7 +553,6 @@ func (s *Store) CreateMessage(ctx context.Context, userID int64, content string)
 	}
 
 	var message Message
-
 	err = s.db.QueryRowContext(ctx,
 		`SELECT m.id, m.user_id, u.username, m.content, m.created_at
 		 FROM messages m
@@ -261,11 +574,11 @@ func (s *Store) CreateMessage(ctx context.Context, userID int64, content string)
 	return &message, nil
 }
 
+// ListMessages 查询公共聊天历史。
 func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-
 	if limit > 100 {
 		limit = 100
 	}
@@ -297,7 +610,6 @@ func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]
 	if err != nil {
 		return nil, fmt.Errorf("查询历史消息失败: %w", err)
 	}
-
 	defer rows.Close()
 
 	messages := make([]Message, 0, limit)
@@ -322,7 +634,7 @@ func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]
 		return nil, err
 	}
 
-	// 数据库查询是 DESC，因此返回给前端时反转成正序。
+	// 数据库查询是 DESC，返回前端时反转为正序。
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
@@ -332,8 +644,8 @@ func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]
 
 // CreatePrivateMessage 保存一条私聊消息。
 func (s *Store) CreatePrivateMessage(ctx context.Context, senderID, receiverID int64, content string) (*PrivateMessage, error) {
-	if senderID == receiverID {
-		return nil, fmt.Errorf("不能向自己发送私聊消息")
+	if senderID <= 0 || receiverID <= 0 || senderID == receiverID {
+		return nil, fmt.Errorf("无效的私聊用户")
 	}
 
 	result, err := s.db.ExecContext(ctx,
@@ -341,7 +653,6 @@ func (s *Store) CreatePrivateMessage(ctx context.Context, senderID, receiverID i
 		 VALUES(?, ?, ?, unixepoch())`,
 		senderID, receiverID, content,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("保存私聊消息失败: %w", err)
 	}
@@ -351,15 +662,10 @@ func (s *Store) CreatePrivateMessage(ctx context.Context, senderID, receiverID i
 		return nil, fmt.Errorf("读取私聊消息ID失败: %w", err)
 	}
 
-	message, err := s.getPrivateMessageByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return message, nil
+	return s.getPrivateMessageByID(ctx, id)
 }
 
-// getPrivateMessageByID 根据消息ID读取私聊消息。
+// getPrivateMessageByID 根据消息 ID 读取私聊消息。
 func (s *Store) getPrivateMessageByID(ctx context.Context, id int64) (*PrivateMessage, error) {
 	var message PrivateMessage
 	var isRead int
@@ -400,8 +706,6 @@ func (s *Store) getPrivateMessageByID(ctx context.Context, id int64) (*PrivateMe
 }
 
 // ListPrivateMessages 查询当前用户与指定用户之间的私聊记录。
-// userID 是当前登录用户，peerID 是对方用户。
-// 只能查询两人之间的消息，不能查询其他用户的私聊记录。
 func (s *Store) ListPrivateMessages(ctx context.Context, userID, peerID, beforeID int64, limit int) ([]PrivateMessage, error) {
 	if userID <= 0 || peerID <= 0 || userID == peerID {
 		return nil, fmt.Errorf("无效的私聊用户")
@@ -410,30 +714,29 @@ func (s *Store) ListPrivateMessages(ctx context.Context, userID, peerID, beforeI
 	if limit <= 0 {
 		limit = 50
 	}
-
 	if limit > 100 {
 		limit = 100
 	}
 
 	query := `
-		SELECT
-			pm.id,
-			pm.sender_id,
-			sender.username,
-			pm.receiver_id,
-			receiver.username,
-			pm.content,
-			pm.created_at,
-			pm.is_read
-		FROM private_messages pm
-		JOIN users sender ON sender.id = pm.sender_id
-		JOIN users receiver ON receiver.id = pm.receiver_id
-		WHERE (
-			(pm.sender_id = ? AND pm.receiver_id = ?)
-			OR
-			(pm.sender_id = ? AND pm.receiver_id = ?)
-		)
-	`
+SELECT
+	pm.id,
+	pm.sender_id,
+	sender.username,
+	pm.receiver_id,
+	receiver.username,
+	pm.content,
+	pm.created_at,
+	pm.is_read
+FROM private_messages pm
+JOIN users sender ON sender.id = pm.sender_id
+JOIN users receiver ON receiver.id = pm.receiver_id
+WHERE (
+	(pm.sender_id = ? AND pm.receiver_id = ?)
+	OR
+	(pm.sender_id = ? AND pm.receiver_id = ?)
+)
+`
 
 	args := []any{userID, peerID, peerID, userID}
 
@@ -449,7 +752,6 @@ func (s *Store) ListPrivateMessages(ctx context.Context, userID, peerID, beforeI
 	if err != nil {
 		return nil, fmt.Errorf("查询私聊历史失败: %w", err)
 	}
-
 	defer rows.Close()
 
 	messages := make([]PrivateMessage, 0, limit)
@@ -527,4 +829,31 @@ func (s *Store) CountUnreadPrivateMessages(ctx context.Context, receiverID, send
 	}
 
 	return count, nil
+}
+
+// isUniqueConstraintError 判断 SQLite 唯一约束冲突。
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := err.Error()
+	return containsAny(message,
+		"UNIQUE constraint failed",
+		"constraint failed",
+	)
+}
+
+func containsAny(value string, patterns ...string) bool {
+	for _, pattern := range patterns {
+		if len(pattern) > 0 && len(value) >= len(pattern) {
+			for i := 0; i <= len(value)-len(pattern); i++ {
+				if value[i:i+len(pattern)] == pattern {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
