@@ -42,11 +42,20 @@ type ChatInput struct {
 	Content    string `json:"content"`
 	ReceiverID int64  `json:"receiver_id"`
 	FileID     int64  `json:"file_id"`
+	RequestID  string `json:"request_id"`
 }
 
 type OnlineUser struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
+}
+
+// FileMessageAck 是文件消息发送确认。
+type FileMessageAck struct {
+	RequestID string `json:"request_id"`
+	Success   bool   `json:"success"`
+	MessageID int64  `json:"message_id,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type ChatOutput struct {
@@ -56,6 +65,7 @@ type ChatOutput struct {
 	Users          []OnlineUser             `json:"users,omitempty"`
 	Count          int                      `json:"count,omitempty"`
 	Error          string                   `json:"error,omitempty"`
+	FileMessageAck *FileMessageAck          `json:"file_message_ack,omitempty"`
 }
 
 func NewChatHub(store *database.Store) *ChatHub {
@@ -186,6 +196,24 @@ func (h *ChatHub) SendError(client *ChatClient, message string) {
 	case client.send <- data:
 	default:
 		log.Println("发送错误通知失败:", client.user.Username)
+	}
+}
+
+// SendFileMessageAck 只向发起请求的 WebSocket 连接返回文件消息确认。
+func (h *ChatHub) SendFileMessageAck(client *ChatClient, ack FileMessageAck) {
+	data, err := json.Marshal(ChatOutput{
+		Type:           "file_message_ack",
+		FileMessageAck: &ack,
+	})
+	if err != nil {
+		log.Println("文件消息 ACK 序列化失败:", err)
+		return
+	}
+
+	select {
+	case client.send <- data:
+	default:
+		log.Println("文件消息 ACK 发送队列已满:", client.user.Username)
 	}
 }
 
@@ -347,9 +375,9 @@ func (c *ChatClient) readPump() {
 		case "private_message":
 			c.handlePrivateMessage(input.ReceiverID, input.Content)
 		case "file_message":
-			c.handlePublicFileMessage(input.FileID)
+			c.handlePublicFileMessage(input.FileID, input.RequestID)
 		case "private_file_message":
-			c.handlePrivateFileMessage(input.ReceiverID, input.FileID)
+			c.handlePrivateFileMessage(input.ReceiverID, input.FileID, input.RequestID)
 		}
 	}
 }
@@ -405,42 +433,75 @@ func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
 	c.hub.BroadcastPrivateMessage(message)
 }
 
-// handlePublicFileMessage 将已上传的文件作为公共聊天消息发送。
-func (c *ChatClient) handlePublicFileMessage(fileID int64) {
+// handlePublicFileMessage 将已上传的文件作为公共聊天消息发送，并返回 ACK。
+func (c *ChatClient) handlePublicFileMessage(fileID int64, requestID string) {
 	if fileID <= 0 {
-		c.hub.SendError(c, "文件 ID 无效")
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "文件 ID 无效",
+		})
 		return
 	}
 
 	message, err := c.hub.store.CreatePublicFileMessage(context.Background(), c.user.ID, fileID)
 	if err != nil {
 		log.Println("发送公共文件消息失败:", err)
-		c.hub.SendError(c, "文件消息发送失败，请确认文件存在且属于当前用户")
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "文件消息发送失败，请确认文件存在且属于当前用户",
+		})
 		return
 	}
 
 	c.hub.Broadcast(message)
+
+	c.hub.SendFileMessageAck(c, FileMessageAck{
+		RequestID: requestID,
+		Success:   true,
+		MessageID: message.ID,
+	})
 }
 
-// handlePrivateFileMessage 将已上传的文件作为私聊消息发送。
-func (c *ChatClient) handlePrivateFileMessage(receiverID, fileID int64) {
+// handlePrivateFileMessage 将已上传的文件作为私聊消息发送，并返回 ACK。
+func (c *ChatClient) handlePrivateFileMessage(receiverID, fileID int64, requestID string) {
 	if receiverID <= 0 || receiverID == c.user.ID {
-		c.hub.SendError(c, "私聊接收者无效")
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "私聊接收者无效",
+		})
 		return
 	}
+
 	if fileID <= 0 {
-		c.hub.SendError(c, "文件 ID 无效")
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "文件 ID 无效",
+		})
 		return
 	}
 
 	message, err := c.hub.store.CreatePrivateFileMessage(context.Background(), c.user.ID, receiverID, fileID)
 	if err != nil {
 		log.Println("发送私聊文件消息失败:", err)
-		c.hub.SendError(c, "私聊文件发送失败，请确认接收者和文件有效")
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "私聊文件发送失败，请确认接收者和文件有效",
+		})
 		return
 	}
 
 	c.hub.BroadcastPrivateMessage(message)
+
+	c.hub.SendFileMessageAck(c, FileMessageAck{
+		RequestID: requestID,
+		Success:   true,
+		MessageID: message.ID,
+	})
 }
 
 func (c *ChatClient) writePump() {

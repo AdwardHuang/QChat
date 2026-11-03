@@ -1644,6 +1644,7 @@
 
     checkLogin();
 </script>
+
 <script>
     (function () {
         "use strict";
@@ -1656,6 +1657,10 @@
             console.error("文件消息初始化失败：找不到聊天输入区域");
             return;
         }
+
+        const pendingAcks = new Map();
+        const attachedSockets = new WeakSet();
+        let requestCounter = 0;
 
         // 文件选择按钮
         const fileButton = document.createElement("button");
@@ -1698,23 +1703,142 @@
             return (size / 1024 / 1024).toFixed(2) + " MB";
         }
 
-        function sendUploadedFile(fileData) {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                throw new Error("WebSocket 未连接，文件已经上传，但尚未发送到聊天");
+        function createRequestId() {
+            requestCounter++;
+
+            if (window.crypto && typeof window.crypto.randomUUID === "function") {
+                return "file-" + window.crypto.randomUUID();
             }
 
-            if (activePeer) {
-                socket.send(JSON.stringify({
-                    type: "private_file_message",
-                    receiver_id: Number(activePeer.id),
-                    file_id: Number(fileData.id)
-                }));
-            } else {
-                socket.send(JSON.stringify({
-                    type: "file_message",
-                    file_id: Number(fileData.id)
-                }));
+            return "file-" + Date.now() + "-" + requestCounter;
+        }
+
+        function finishPendingAck(requestId, error, ack) {
+            const pending = pendingAcks.get(requestId);
+
+            if (!pending) {
+                return;
             }
+
+            clearTimeout(pending.timer);
+            pendingAcks.delete(requestId);
+
+            if (error) {
+                pending.reject(error);
+            } else {
+                pending.resolve(ack);
+            }
+        }
+
+        function failAllPendingAcks(message) {
+            for (const requestId of pendingAcks.keys()) {
+                finishPendingAck(
+                    requestId,
+                    new Error(message)
+                );
+            }
+        }
+
+        // 监听服务端 ACK，不覆盖原有 WebSocket onmessage 处理。
+        function attachAckListener(ws) {
+            if (!ws || attachedSockets.has(ws)) {
+                return;
+            }
+
+            attachedSockets.add(ws);
+
+            ws.addEventListener("message", function (event) {
+                let data;
+
+                try {
+                    data = JSON.parse(event.data);
+                } catch (error) {
+                    return;
+                }
+
+                if (data.type !== "file_message_ack" || !data.file_message_ack) {
+                    return;
+                }
+
+                const ack = data.file_message_ack;
+                if (!ack.request_id) {
+                    return;
+                }
+
+                if (ack.success) {
+                    finishPendingAck(ack.request_id, null, ack);
+                } else {
+                    finishPendingAck(
+                        ack.request_id,
+                        new Error(ack.error || "文件消息发送失败")
+                    );
+                }
+            });
+
+            ws.addEventListener("close", function () {
+                failAllPendingAcks(
+                    "WebSocket 已断开，无法确认文件消息是否发送成功。请先检查聊天记录，不要直接重复发送。"
+                );
+            });
+        }
+
+        // 包装原有连接函数，为新连接增加 ACK 监听。
+        const originalConnectWebSocket = connectWebSocket;
+
+        connectWebSocket = function () {
+            originalConnectWebSocket();
+            attachAckListener(socket);
+        };
+
+        // 发送文件消息并等待服务端 ACK。
+        function sendUploadedFile(fileData, targetPeer) {
+            return new Promise(function (resolve, reject) {
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    reject(new Error(
+                        "WebSocket 未连接，文件已经上传，但尚未发送到聊天"
+                    ));
+                    return;
+                }
+
+                const ws = socket;
+                const requestId = createRequestId();
+
+                attachAckListener(ws);
+
+                const payload = {
+                    type: targetPeer ? "private_file_message" : "file_message",
+                    request_id: requestId,
+                    file_id: Number(fileData.id)
+                };
+
+                if (targetPeer) {
+                    payload.receiver_id = Number(targetPeer.id);
+                }
+
+                const timer = setTimeout(function () {
+                    finishPendingAck(
+                        requestId,
+                        new Error(
+                            "等待服务端确认超时，发送状态未知。请先检查聊天记录，不要直接重复发送。"
+                        )
+                    );
+                }, 20000);
+
+                pendingAcks.set(requestId, {
+                    resolve: resolve,
+                    reject: reject,
+                    timer: timer
+                });
+
+                try {
+                    ws.send(JSON.stringify(payload));
+                } catch (error) {
+                    finishPendingAck(
+                        requestId,
+                        new Error("WebSocket 发送失败：" + error.message)
+                    );
+                }
+            });
         }
 
         async function uploadAndSendFile(file) {
@@ -1738,8 +1862,14 @@
                 return;
             }
 
+            // 上传开始时固定发送目标，避免上传期间切换聊天对象导致发错人。
+            const targetPeer = activePeer
+                ? {id: Number(activePeer.id), username: activePeer.username}
+                : null;
+
             fileButton.disabled = true;
             fileInput.disabled = true;
+
             setFileStatus("正在上传：" + file.name, false);
 
             try {
@@ -1752,6 +1882,7 @@
                 });
 
                 let result;
+
                 try {
                     result = await response.json();
                 } catch (error) {
@@ -1768,15 +1899,18 @@
                     throw new Error("上传成功，但服务器没有返回文件 ID");
                 }
 
-                setFileStatus("上传完成，正在发送文件消息...", false);
+                setFileStatus("上传完成，等待服务端确认...", false);
 
-                sendUploadedFile(fileData);
+                const ack = await sendUploadedFile(fileData, targetPeer);
 
                 setFileStatus(
-                    "文件已发送：" + fileData.original_name +
-                    "（" + formatFileSize(fileData.size) + "）",
+                    "✓ 文件发送成功：" +
+                    fileData.original_name +
+                    "（" + formatFileSize(fileData.size) + "）" +
+                    "，消息 ID：" + ack.message_id,
                     false
                 );
+
             } catch (error) {
                 console.error("文件发送失败", error);
                 setFileStatus(error.message || "文件发送失败", true);
@@ -1799,20 +1933,21 @@
             }
         });
 
-        // 保存原来的消息渲染方法
+        // 保存原来的消息渲染方法。
         const originalCreateMessageElement = createMessageElement;
 
-        // 增强消息渲染：识别文件消息
+        // 增强消息渲染：识别文件消息。
         createMessageElement = function (message, isPrivate) {
             let fileData = null;
 
             try {
                 const parsed = JSON.parse(message.content);
+
                 if (parsed && parsed.type === "file") {
                     fileData = parsed;
                 }
             } catch (error) {
-                // 普通文本消息，不需要处理
+                // 普通文本消息，不需要处理。
             }
 
             if (!fileData) {
@@ -1882,8 +2017,9 @@
             return wrapper;
         };
 
-        console.log("QChat 文件消息功能已初始化");
+        console.log("QChat 文件消息 ACK 功能已初始化");
     })();
 </script>
+
 </body>
 </html>
