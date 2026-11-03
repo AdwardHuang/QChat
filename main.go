@@ -1,37 +1,52 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+
+	"qchat/internal/auth"
+	"qchat/internal/config"
+	"qchat/internal/database"
+	"qchat/internal/server"
 )
 
 func main() {
-	// 注册首页路由
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
+	// 1. 加载配置
+	cfg, err := config.Load("config.json")
+	if err != nil {
+		log.Fatal("加载配置失败: ", err)
+	}
 
-		http.ServeFile(w, r, "web/index.html")
-	})
+	// 2. 打开数据库
+	store, err := database.Open(cfg.DatabasePath)
+	if err != nil {
+		log.Fatal("打开数据库失败: ", err)
+	}
+	defer store.Close()
 
-	// 健康检查接口
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("QChat is running"))
-	})
+	// 3. 初始化管理员账号
+	passwordHash, err := auth.HashPassword(cfg.AdminPassword)
+	if err != nil {
+		log.Fatal("管理员密码加密失败: ", err)
+	}
 
-	// 监听所有 IPv4 网络接口的 8080 端口
-	addr := ":8080"
+	if err := store.CreateAdminIfEmpty(context.Background(), cfg.AdminUsername, passwordHash); err != nil {
+		log.Fatal("初始化管理员失败: ", err)
+	}
+
+	// 4. 创建 HTTP 服务
+	srv := server.New(store, cfg.SessionHours)
 
 	log.Println("================================")
 	log.Println(" QChat Server Starting...")
-	log.Println(" Local: http://127.0.0.1:8080")
-	log.Println(" Port : 8080")
+	log.Println(" Local: http://127.0.0.1" + cfg.ListenAddr)
+	log.Println(" Port :", cfg.ListenAddr)
 	log.Println("================================")
+	log.Println("管理员账号:", cfg.AdminUsername)
 
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatal("Server startup failed: ", err)
+	// 5. 启动服务
+	if err := http.ListenAndServe(cfg.ListenAddr, srv.Handler()); err != nil {
+		log.Fatal("服务启动失败: ", err)
 	}
 }

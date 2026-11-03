@@ -21,54 +21,219 @@
         }
 
         .container {
-            width: 420px;
+            width: 400px;
             max-width: calc(100% - 32px);
-            padding: 40px;
-            background: #ffffff;
+            padding: 36px;
+            background: white;
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-            text-align: center;
         }
 
         h1 {
-            margin: 0 0 12px;
-            font-size: 30px;
+            margin: 0;
             color: #2878e8;
+            text-align: center;
+            font-size: 30px;
         }
 
         .subtitle {
+            margin: 12px 0 30px;
             color: #8490a0;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .form-item {
+            margin-bottom: 18px;
+        }
+
+        .form-item label {
+            display: block;
+            margin-bottom: 8px;
             font-size: 14px;
         }
 
-        .status {
-            margin-top: 30px;
-            padding: 14px;
+        input {
+            width: 100%;
+            height: 42px;
+            padding: 0 12px;
+            border: 1px solid #dce1e8;
+            border-radius: 6px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        input:focus {
+            border-color: #2878e8;
+        }
+
+        button {
+            width: 100%;
+            height: 44px;
+            border: none;
+            border-radius: 6px;
+            background: #2878e8;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1766d4;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 16px;
+            min-height: 20px;
+            color: #d44;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .user-panel {
+            display: none;
+            text-align: center;
+        }
+
+        .success {
+            margin: 25px 0;
+            padding: 18px;
             background: #eaf8ef;
             color: #21864a;
             border-radius: 8px;
-            font-size: 14px;
         }
 
         .version {
-            margin-top: 24px;
+            margin-top: 25px;
             color: #a0a8b4;
             font-size: 12px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>QChat</h1>
-        <div class="subtitle">轻量级局域网聊天室</div>
+<div class="container">
+    <h1>QChat</h1>
+    <div class="subtitle">轻量级局域网聊天室</div>
 
-        <div class="status">
-            ● 服务端运行正常
+    <form id="loginForm">
+        <div class="form-item">
+            <label for="username">用户名</label>
+            <input id="username" autocomplete="username" required>
         </div>
 
-        <div class="version">
-            QChat 0.1.0 · 第一个开发版本
+        <div class="form-item">
+            <label for="password">密码</label>
+            <input id="password" type="password"
+                   autocomplete="current-password" required>
         </div>
+
+        <button id="loginButton" type="submit">登 录</button>
+        <div class="message" id="message"></div>
+    </form>
+
+    <div class="user-panel" id="userPanel">
+        <div class="success">
+            登录成功，欢迎回来！
+        </div>
+
+        <div>
+            当前用户：<strong id="currentUsername"></strong>
+        </div>
+
+        <p style="color:#8490a0;font-size:13px;">
+            QChat 服务端运行正常
+        </p>
+
+        <button id="logoutButton" type="button">退出登录</button>
     </div>
+
+    <div class="version">
+        QChat 0.1.0
+    </div>
+</div>
+
+<script>
+    const loginForm = document.getElementById("loginForm");
+    const loginButton = document.getElementById("loginButton");
+    const message = document.getElementById("message");
+    const userPanel = document.getElementById("userPanel");
+
+    function showUser(user) {
+        loginForm.style.display = "none";
+        userPanel.style.display = "block";
+        document.getElementById("currentUsername").textContent = user.username;
+    }
+
+    function showLogin() {
+        loginForm.style.display = "block";
+        userPanel.style.display = "none";
+    }
+
+    async function checkLogin() {
+        try {
+            const response = await fetch("/api/me");
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showUser(result.data);
+            } else {
+                showLogin();
+            }
+        } catch (error) {
+            message.textContent = "无法连接服务器";
+        }
+    }
+
+    loginForm.addEventListener("submit", async function(event) {
+        event.preventDefault();
+
+        loginButton.disabled = true;
+        message.textContent = "";
+
+        try {
+            const response = await fetch("/api/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username: document.getElementById("username").value,
+                    password: document.getElementById("password").value
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showUser(result.data);
+                document.getElementById("password").value = "";
+            } else {
+                message.textContent = result.message || "登录失败";
+            }
+        } catch (error) {
+            message.textContent = "无法连接服务器";
+        } finally {
+            loginButton.disabled = false;
+        }
+    });
+
+    document.getElementById("logoutButton").addEventListener("click", async function() {
+        try {
+            await fetch("/api/logout", {
+                method: "POST"
+            });
+        } finally {
+            showLogin();
+        }
+    });
+
+    checkLogin();
+</script>
 </body>
 </html>

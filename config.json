@@ -1,0 +1,7 @@
+{
+  "listen_addr": ":8080",
+  "database_path": "data/qchat.db",
+  "session_hours": 24,
+  "admin_username": "admin",
+  "admin_password": "QChat_Admin_2026!"
+}
