@@ -1787,8 +1787,8 @@
 
         inputRow.insertBefore(fileButton, chatInputElement);
         chatInputArea.appendChild(fileInput);
+        chatInputArea.insertBefore(queuePanel, inputRow);
         chatInputArea.appendChild(fileStatus);
-        chatInputArea.appendChild(queuePanel);
 
         // ==================== 工具方法 ====================
 
@@ -1966,7 +1966,9 @@
 
                 const track = document.createElement("div");
                 track.style.flex = "1";
-                track.style.height = "5px";
+                track.style.width = "100%";
+                track.style.minWidth = "80px";
+                track.style.height = "6px";
                 track.style.background = "#e2e7ef";
                 track.style.borderRadius = "4px";
                 track.style.overflow = "hidden";
@@ -2230,7 +2232,14 @@
 
                 xhr.timeout = 0;
 
-                xhr.send(formData);
+                // 先更新界面，再启动 HTTP 上传。
+                renderQueue();
+
+                requestAnimationFrame(function () {
+                    if (task.state !== "cancelled") {
+                        xhr.send(formData);
+                    }
+                });
             });
         }
 
