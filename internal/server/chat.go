@@ -98,32 +98,6 @@ func (h *ChatHub) Broadcast(message *database.Message) {
 	}
 }
 
-func (h *ChatHub) SendHistory(client *ChatClient) error {
-	messages, err := h.store.ListMessages(context.Background(), 0, 50)
-	if err != nil {
-		return err
-	}
-
-	for _, message := range messages {
-		data, err := json.Marshal(ChatOutput{
-			Type:    "message",
-			Message: &message,
-		})
-
-		if err != nil {
-			return err
-		}
-
-		select {
-		case client.send <- data:
-		default:
-			return nil
-		}
-	}
-
-	return nil
-}
-
 func (h *ChatHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	user, err := h.getUser(r)
 	if err != nil {
@@ -145,13 +119,6 @@ func (h *ChatHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.AddClient(client)
-
-	if err := h.SendHistory(client); err != nil {
-		log.Println("发送历史消息失败:", err)
-		h.RemoveClient(client)
-		conn.Close()
-		return
-	}
 
 	go client.writePump()
 	go client.readPump()
