@@ -140,7 +140,6 @@ func (h *ChatHub) Broadcast(message *database.Message) {
 	}
 
 	h.mu.Unlock()
-
 	if removed {
 		h.BroadcastOnlineUsers()
 	}
@@ -164,7 +163,6 @@ func (h *ChatHub) BroadcastPrivateMessage(message *database.PrivateMessage) {
 		if client.user.ID != message.SenderID && client.user.ID != message.ReceiverID {
 			continue
 		}
-
 		select {
 		case client.send <- data:
 		default:
@@ -191,7 +189,6 @@ func (h *ChatHub) SendError(client *ChatClient, message string) {
 	if err != nil {
 		return
 	}
-
 	select {
 	case client.send <- data:
 	default:
@@ -209,7 +206,6 @@ func (h *ChatHub) SendFileMessageAck(client *ChatClient, ack FileMessageAck) {
 		log.Println("文件消息 ACK 序列化失败:", err)
 		return
 	}
-
 	select {
 	case client.send <- data:
 	default:
@@ -233,7 +229,6 @@ func (h *ChatHub) OnlineUsers() []OnlineUser {
 	for _, user := range userMap {
 		users = append(users, user)
 	}
-
 	sort.Slice(users, func(i, j int) bool {
 		return users[i].ID < users[j].ID
 	})
@@ -253,7 +248,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 			_ = client.conn.Close()
 		}
 	}
-
 	userMap := make(map[int64]OnlineUser)
 	for client := range h.clients {
 		userMap[client.user.ID] = OnlineUser{
@@ -270,7 +264,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 	sort.Slice(users, func(i, j int) bool {
 		return users[i].ID < users[j].ID
 	})
-
 	data, err := json.Marshal(ChatOutput{
 		Type:  "online_users",
 		Users: users,
@@ -296,7 +289,6 @@ func (h *ChatHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("WebSocket升级失败:", err)
@@ -346,7 +338,6 @@ func (c *ChatClient) readPump() {
 		log.Printf("用户 %s 离开聊天室，当前 WebSocket 连接数 %d", c.user.Username, c.hub.ClientCount())
 		c.hub.BroadcastOnlineUsers()
 	}()
-
 	c.conn.SetReadLimit(maxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 
@@ -368,7 +359,6 @@ func (c *ChatClient) readPump() {
 		if err := json.Unmarshal(data, &input); err != nil {
 			continue
 		}
-
 		switch input.Type {
 		case "message":
 			c.handlePublicMessage(input.Content)
@@ -387,7 +377,6 @@ func (c *ChatClient) handlePublicMessage(content string) {
 	if content == "" {
 		return
 	}
-
 	runes := []rune(content)
 	if len(runes) > 2000 {
 		content = string(runes[:2000])
@@ -405,7 +394,6 @@ func (c *ChatClient) handlePublicMessage(content string) {
 
 func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
 	content = strings.TrimSpace(content)
-
 	if receiverID <= 0 {
 		c.hub.SendError(c, "接收者无效")
 		return
@@ -435,6 +423,15 @@ func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
 
 // handlePublicFileMessage 将已上传的文件作为公共聊天消息发送，并返回 ACK。
 func (c *ChatClient) handlePublicFileMessage(fileID int64, requestID string) {
+	if strings.TrimSpace(requestID) == "" {
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "请求 ID 无效",
+		})
+		return
+	}
+
 	if fileID <= 0 {
 		c.hub.SendFileMessageAck(c, FileMessageAck{
 			RequestID: requestID,
@@ -444,7 +441,7 @@ func (c *ChatClient) handlePublicFileMessage(fileID int64, requestID string) {
 		return
 	}
 
-	message, err := c.hub.store.CreatePublicFileMessage(context.Background(), c.user.ID, fileID)
+	message, err := c.hub.store.CreatePublicFileMessage(context.Background(), c.user.ID, fileID, requestID)
 	if err != nil {
 		log.Println("发送公共文件消息失败:", err)
 		c.hub.SendFileMessageAck(c, FileMessageAck{
@@ -466,6 +463,15 @@ func (c *ChatClient) handlePublicFileMessage(fileID int64, requestID string) {
 
 // handlePrivateFileMessage 将已上传的文件作为私聊消息发送，并返回 ACK。
 func (c *ChatClient) handlePrivateFileMessage(receiverID, fileID int64, requestID string) {
+	if strings.TrimSpace(requestID) == "" {
+		c.hub.SendFileMessageAck(c, FileMessageAck{
+			RequestID: requestID,
+			Success:   false,
+			Error:     "请求 ID 无效",
+		})
+		return
+	}
+
 	if receiverID <= 0 || receiverID == c.user.ID {
 		c.hub.SendFileMessageAck(c, FileMessageAck{
 			RequestID: requestID,
@@ -484,7 +490,7 @@ func (c *ChatClient) handlePrivateFileMessage(receiverID, fileID int64, requestI
 		return
 	}
 
-	message, err := c.hub.store.CreatePrivateFileMessage(context.Background(), c.user.ID, receiverID, fileID)
+	message, err := c.hub.store.CreatePrivateFileMessage(context.Background(), c.user.ID, receiverID, fileID, requestID)
 	if err != nil {
 		log.Println("发送私聊文件消息失败:", err)
 		c.hub.SendFileMessageAck(c, FileMessageAck{
@@ -522,7 +528,6 @@ func (c *ChatClient) writePump() {
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
-
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -545,7 +550,6 @@ func parseBeforeID(r *http.Request) int64 {
 	if value == "" {
 		return 0
 	}
-
 	id, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return 0
