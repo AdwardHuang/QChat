@@ -324,9 +324,18 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request, uplo
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-store")
+	disposition := "attachment"
+
+	if r.URL.Query().Get("inline") == "1" {
+		switch strings.ToLower(strings.TrimSpace(contentType)) {
+		case "image/jpeg", "image/png", "image/gif", "image/webp":
+			disposition = "inline"
+		}
+	}
+
 	w.Header().Set(
 		"Content-Disposition",
-		mime.FormatMediaType("attachment", map[string]string{
+		mime.FormatMediaType(disposition, map[string]string{
 			"filename": record.OriginalName,
 		}),
 	)

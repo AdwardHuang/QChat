@@ -1647,7 +1647,6 @@
 
 
 <script>
-
     (function () {
         "use strict";
 
@@ -1671,9 +1670,82 @@
         let taskCounter = 0;
         let processingQueue = false;
         let dragCounter = 0;
-        let activeTask = null;
 
         const tasks = [];
+
+        // ==================== 图片预览 ====================
+
+        const previewImageTypes = new Set([
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp"
+        ]);
+
+        const imagePreviewMask = document.createElement("div");
+        imagePreviewMask.style.position = "fixed";
+        imagePreviewMask.style.inset = "0";
+        imagePreviewMask.style.zIndex = "2000";
+        imagePreviewMask.style.display = "none";
+        imagePreviewMask.style.alignItems = "center";
+        imagePreviewMask.style.justifyContent = "center";
+        imagePreviewMask.style.padding = "30px";
+        imagePreviewMask.style.background = "rgba(0, 0, 0, 0.85)";
+        imagePreviewMask.style.cursor = "zoom-out";
+
+        const imagePreview = document.createElement("img");
+        imagePreview.style.display = "block";
+        imagePreview.style.maxWidth = "95vw";
+        imagePreview.style.maxHeight = "90vh";
+        imagePreview.style.objectFit = "contain";
+        imagePreview.style.borderRadius = "6px";
+        imagePreview.style.boxShadow = "0 4px 30px rgba(0,0,0,0.4)";
+        imagePreview.style.cursor = "default";
+
+        const imagePreviewClose = document.createElement("button");
+        imagePreviewClose.type = "button";
+        imagePreviewClose.textContent = "关闭";
+        imagePreviewClose.style.position = "absolute";
+        imagePreviewClose.style.top = "20px";
+        imagePreviewClose.style.right = "25px";
+        imagePreviewClose.style.padding = "8px 16px";
+        imagePreviewClose.style.background = "rgba(255,255,255,0.2)";
+        imagePreviewClose.style.color = "#fff";
+        imagePreviewClose.style.fontSize = "14px";
+        imagePreviewClose.style.cursor = "pointer";
+
+        imagePreviewMask.appendChild(imagePreview);
+        imagePreviewMask.appendChild(imagePreviewClose);
+        document.body.appendChild(imagePreviewMask);
+
+        function closeImagePreview() {
+            imagePreviewMask.style.display = "none";
+            imagePreview.removeAttribute("src");
+        }
+
+        function openImagePreview(url) {
+            imagePreview.src = url;
+            imagePreviewMask.style.display = "flex";
+        }
+
+        imagePreviewMask.addEventListener("click", function (event) {
+            if (event.target === imagePreviewMask) {
+                closeImagePreview();
+            }
+        });
+
+        imagePreviewClose.addEventListener("click", closeImagePreview);
+
+        imagePreview.addEventListener("click", function (event) {
+            event.stopPropagation();
+        });
+
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" &&
+                imagePreviewMask.style.display === "flex") {
+                closeImagePreview();
+            }
+        });
 
         // ==================== UI 初始化 ====================
 
@@ -1718,6 +1790,7 @@
 
         const queueProgress = document.createElement("span");
         queueProgress.style.color = "#2878e8";
+
         queueHeader.appendChild(queueTitle);
         queueHeader.appendChild(queueProgress);
 
@@ -1733,6 +1806,7 @@
         overallBar.style.width = "0%";
         overallBar.style.background = "#2878e8";
         overallBar.style.transition = "width 0.15s";
+
         overallTrack.appendChild(overallBar);
 
         const taskList = document.createElement("div");
@@ -1871,11 +1945,7 @@
         }
 
         function getTaskPercent(task) {
-            if (task.state === "success") {
-                return 100;
-            }
-
-            if (task.state === "sending") {
+            if (task.state === "success" || task.state === "sending") {
                 return 100;
             }
 
@@ -1899,26 +1969,17 @@
 
             tasks.forEach(function (task) {
                 totalBytes += task.file.size;
-
-                if (task.state === "success" || task.state === "sending") {
-                    completedBytes += task.file.size;
-                } else if (task.state === "failed") {
-                    completedBytes += task.loaded;
-                } else if (task.state === "cancelled") {
-                    completedBytes += task.loaded;
-                } else {
-                    completedBytes += task.loaded;
-                }
+                completedBytes += task.state === "success" || task.state === "sending"
+                    ? task.file.size
+                    : task.loaded;
 
                 if (task.state === "success") {
                     completedCount++;
                 }
 
-                if (
-                    task.state === "success" ||
+                if (task.state === "success" ||
                     task.state === "failed" ||
-                    task.state === "cancelled"
-                ) {
+                    task.state === "cancelled") {
                     finishedCount++;
                 }
 
@@ -1977,9 +2038,10 @@
                 bar.style.height = "100%";
                 bar.style.width = getTaskPercent(task) + "%";
                 bar.style.transition = "width 0.15s";
-                bar.style.background = task.state === "failed" || task.state === "cancelled"
-                    ? "#d44"
-                    : task.state === "success" ? "#28a66a" : "#2878e8";
+                bar.style.background =
+                    task.state === "failed" || task.state === "cancelled"
+                        ? "#d44"
+                        : task.state === "success" ? "#28a66a" : "#2878e8";
 
                 track.appendChild(bar);
 
@@ -2032,14 +2094,14 @@
                 : 0;
 
             overallBar.style.width = formatPercent(percent);
+
             queueProgress.textContent =
                 completedCount + "/" + tasks.length + " 成功 · " +
                 finishedCount + "/" + tasks.length + " 完成";
 
             if (tasks.length > 0) {
                 setFileStatus(
-                    "上传队列：" + finishedCount + "/" + tasks.length +
-                    " 个文件已处理",
+                    "上传队列：" + finishedCount + "/" + tasks.length + " 个文件已处理",
                     tasks.some(task => task.state === "failed")
                 );
             }
@@ -2163,7 +2225,6 @@
             return new Promise(function (resolve, reject) {
                 const file = task.file;
                 const formData = new FormData();
-
                 formData.append("file", file);
 
                 const xhr = new XMLHttpRequest();
@@ -2202,7 +2263,9 @@
 
                     if (xhr.status < 200 || xhr.status >= 300 ||
                         !result.success || !result.data) {
-                        reject(new Error(result.message || "文件上传失败，HTTP " + xhr.status));
+                        reject(new Error(
+                            result.message || "文件上传失败，HTTP " + xhr.status
+                        ));
                         return;
                     }
 
@@ -2232,7 +2295,6 @@
 
                 xhr.timeout = 0;
 
-                // 先更新界面，再启动 HTTP 上传。
                 renderQueue();
 
                 requestAnimationFrame(function () {
@@ -2275,6 +2337,7 @@
             task.messageId = ack.message_id;
             task.state = "success";
             task.loaded = task.file.size;
+
             renderQueue();
         }
 
@@ -2289,8 +2352,10 @@
             if (task.state === "uploading" && task.xhr) {
                 task.state = "cancelled";
                 task.error = "用户取消上传";
+
                 const xhr = task.xhr;
                 task.xhr = null;
+
                 xhr.abort();
                 renderQueue();
             }
@@ -2312,8 +2377,6 @@
                         break;
                     }
 
-                    activeTask = task;
-
                     try {
                         await processTask(task);
                     } catch (error) {
@@ -2325,18 +2388,24 @@
                     }
 
                     task.xhr = null;
-                    activeTask = null;
                     renderQueue();
                 }
             } finally {
                 processingQueue = false;
-                activeTask = null;
                 fileButton.disabled = false;
                 fileInput.disabled = false;
 
-                const successCount = tasks.filter(task => task.state === "success").length;
-                const failedCount = tasks.filter(task => task.state === "failed").length;
-                const cancelledCount = tasks.filter(task => task.state === "cancelled").length;
+                const successCount = tasks.filter(
+                    task => task.state === "success"
+                ).length;
+
+                const failedCount = tasks.filter(
+                    task => task.state === "failed"
+                ).length;
+
+                const cancelledCount = tasks.filter(
+                    task => task.state === "cancelled"
+                ).length;
 
                 setFileStatus(
                     "队列处理完成：成功 " + successCount +
@@ -2506,16 +2575,56 @@
             const card = document.createElement("div");
             card.className = "message-content";
             card.style.display = "inline-flex";
-            card.style.alignItems = "center";
-            card.style.gap = "12px";
+            card.style.flexDirection = "column";
+            card.style.alignItems = "flex-start";
+            card.style.gap = "8px";
             card.style.minWidth = "220px";
+            card.style.maxWidth = "min(420px, 100%)";
 
-            const fileIcon = document.createElement("span");
-            fileIcon.textContent = "📎";
-            fileIcon.style.fontSize = "26px";
+            const contentType = String(fileData.content_type || "").toLowerCase();
+            const isImage = previewImageTypes.has(contentType);
+            const fileId = encodeURIComponent(fileData.file_id);
+            const downloadUrl = "/api/files/" + fileId;
+
+            // 图片缩略图
+            if (isImage) {
+                const imageUrl = downloadUrl + "?inline=1";
+
+                const thumbnail = document.createElement("img");
+                thumbnail.src = imageUrl;
+                thumbnail.alt = fileData.original_name || "图片";
+                thumbnail.loading = "lazy";
+                thumbnail.style.display = "block";
+                thumbnail.style.maxWidth = "100%";
+                thumbnail.style.maxHeight = "240px";
+                thumbnail.style.objectFit = "contain";
+                thumbnail.style.borderRadius = "6px";
+                thumbnail.style.cursor = "zoom-in";
+                thumbnail.style.background = "rgba(0,0,0,0.04)";
+
+                thumbnail.addEventListener("click", function () {
+                    openImagePreview(imageUrl);
+                });
+
+                thumbnail.addEventListener("error", function () {
+                    thumbnail.style.display = "none";
+
+                    const errorText = document.createElement("div");
+                    errorText.textContent = "图片预览加载失败，请尝试下载";
+                    errorText.style.fontSize = "12px";
+                    errorText.style.color = "#d44";
+
+                    details.insertBefore(errorText, fileName);
+                });
+
+                card.appendChild(thumbnail);
+            }
 
             const details = document.createElement("div");
+            details.style.display = "flex";
+            details.style.flexDirection = "column";
             details.style.minWidth = "0";
+            details.style.width = "100%";
 
             const fileName = document.createElement("div");
             fileName.textContent = fileData.original_name || "未知文件";
@@ -2530,7 +2639,7 @@
 
             const downloadLink = document.createElement("a");
             downloadLink.textContent = "下载文件";
-            downloadLink.href = "/api/files/" + encodeURIComponent(fileData.file_id);
+            downloadLink.href = downloadUrl;
             downloadLink.download = fileData.original_name || "download";
             downloadLink.style.display = "inline-block";
             downloadLink.style.marginTop = "6px";
@@ -2541,7 +2650,6 @@
             details.appendChild(fileSize);
             details.appendChild(downloadLink);
 
-            card.appendChild(fileIcon);
             card.appendChild(details);
 
             wrapper.appendChild(info);
@@ -2550,9 +2658,8 @@
             return wrapper;
         };
 
-        console.log("QChat 0.7 文件上传队列初始化完成");
+        console.log("QChat 0.8 文件上传及图片预览初始化完成");
     })();
-
 </script>
 
 
