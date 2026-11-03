@@ -81,6 +81,11 @@
             background: #1766d4;
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .login-button {
             width: 100%;
             height: 44px;
@@ -172,16 +177,22 @@
             font-weight: normal;
         }
 
-        .online-user {
+        .conversation-item, .online-user {
             display: flex;
             align-items: center;
             gap: 9px;
             padding: 11px 15px;
             font-size: 13px;
+            border-bottom: 1px solid #f0f1f3;
+            cursor: pointer;
         }
 
-        .online-user:hover {
+        .conversation-item:hover, .online-user:hover {
             background: #f5f7fa;
+        }
+
+        .conversation-item.active, .online-user.active {
+            background: #eaf2ff;
         }
 
         .online-dot {
@@ -203,6 +214,18 @@
         .online-me {
             color: #2878e8;
             font-size: 11px;
+        }
+
+        .unread-badge {
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 9px;
+            background: #e5484d;
+            color: white;
+            font-size: 11px;
+            line-height: 18px;
+            text-align: center;
         }
 
         /* 右侧聊天内容 */
@@ -317,7 +340,7 @@
             }
 
             .online-panel {
-                width: 110px;
+                width: 130px;
             }
 
             .online-header {
@@ -325,7 +348,7 @@
                 font-size: 12px;
             }
 
-            .online-user {
+            .online-user, .conversation-item {
                 gap: 5px;
                 padding: 10px 7px;
                 font-size: 12px;
@@ -344,7 +367,6 @@
 </head>
 
 <body>
-
 <div class="login-container" id="loginContainer">
     <h1>QChat</h1>
 
@@ -374,7 +396,7 @@
 <div class="chat-container" id="chatContainer">
 
     <div class="chat-header">
-        <div class="chat-title">
+        <div class="chat-title" id="chatTitle">
             QChat · 公共聊天室
         </div>
 
@@ -388,12 +410,18 @@
 
     <div class="chat-main">
 
-        <!-- 在线用户列表 -->
+        <!-- 在线用户和会话列表 -->
         <div class="online-panel">
             <div class="online-header">
-                <span>在线用户</span>
+                <span>会话</span>
                 <span class="online-count" id="onlineCount">0 人</span>
             </div>
+
+            <div class="conversation-item active" id="publicChatItem">
+                <span class="online-dot"></span>
+                <span class="online-username">公共聊天室</span>
+            </div>
+
             <div id="onlineUsers"></div>
         </div>
 
@@ -434,22 +462,35 @@
     let currentUser = null;
     let socket = null;
     let socketConnecting = false;
+
+    let activePeer = null;
+    let currentOnlineUsers = [];
+
     let oldestMessageId = null;
     let loadingHistory = false;
     let hasMoreHistory = true;
+
+    let viewToken = 0;
+
+    const unreadCounts = new Map();
+    const unreadLoadedUsers = new Set();
+    const unreadVersions = new Map();
+    const renderedMessageIds = new Set();
 
     const loginContainer = document.getElementById("loginContainer");
     const chatContainer = document.getElementById("chatContainer");
     const loginForm = document.getElementById("loginForm");
     const loginButton = document.getElementById("loginButton");
     const loginMessage = document.getElementById("loginMessage");
+
     const chatMessages = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const sendButton = document.getElementById("sendButton");
     const historyButton = document.getElementById("historyButton");
     const connectionStatus = document.getElementById("connectionStatus");
+    const chatTitle = document.getElementById("chatTitle");
+    const publicChatItem = document.getElementById("publicChatItem");
 
-    // 在线用户列表元素
     const onlineUsersElement = document.getElementById("onlineUsers");
     const onlineCountElement = document.getElementById("onlineCount");
 
@@ -464,14 +505,45 @@
         document.getElementById("currentUsername").textContent = currentUser.username;
     }
 
+    function resetChatState() {
+        viewToken++;
+
+        activePeer = null;
+        currentOnlineUsers = [];
+
+        oldestMessageId = null;
+        loadingHistory = false;
+        hasMoreHistory = true;
+
+        unreadCounts.clear();
+        unreadLoadedUsers.clear();
+        unreadVersions.clear();
+        renderedMessageIds.clear();
+
+        chatMessages.innerHTML = "";
+        onlineUsersElement.innerHTML = "";
+        onlineCountElement.textContent = "0 人";
+
+        chatTitle.textContent = "QChat · 公共聊天室";
+        chatInput.placeholder = "输入消息，按 Enter 发送";
+        publicChatItem.classList.add("active");
+
+        historyButton.disabled = false;
+    }
+
     // 渲染在线用户列表
     function renderOnlineUsers(users, count) {
+        currentOnlineUsers = users || [];
         onlineUsersElement.innerHTML = "";
         onlineCountElement.textContent = count + " 人";
 
-        users.forEach(user => {
+        currentOnlineUsers.forEach(user => {
             const item = document.createElement("div");
             item.className = "online-user";
+
+            if (activePeer && Number(activePeer.id) === Number(user.id)) {
+                item.classList.add("active");
+            }
 
             const dot = document.createElement("span");
             dot.className = "online-dot";
@@ -483,15 +555,77 @@
             item.appendChild(dot);
             item.appendChild(username);
 
-            if (currentUser && user.id === currentUser.id) {
+            if (currentUser && Number(user.id) === Number(currentUser.id)) {
                 const me = document.createElement("span");
                 me.className = "online-me";
                 me.textContent = "我";
                 item.appendChild(me);
+            } else {
+                item.addEventListener("click", function () {
+                    openPrivateChat(user);
+                });
+
+                const unread = unreadCounts.get(Number(user.id)) || 0;
+                if (unread > 0) {
+                    const badge = document.createElement("span");
+                    badge.className = "unread-badge";
+                    badge.textContent = unread > 99 ? "99+" : unread;
+                    item.appendChild(badge);
+                }
             }
 
             onlineUsersElement.appendChild(item);
+
+            const userId = Number(user.id);
+            if (!unreadLoadedUsers.has(userId)) {
+                unreadLoadedUsers.add(userId);
+                loadUnreadCount(userId);
+            }
         });
+    }
+
+    function refreshOnlineUsers() {
+        renderOnlineUsers(currentOnlineUsers, currentOnlineUsers.length);
+    }
+
+    async function loadUnreadCount(peerId) {
+        if (!currentUser) {
+            return;
+        }
+
+        const version = unreadVersions.get(peerId) || 0;
+
+        try {
+            const response = await fetch(
+                "/api/private/unread?peer_id=" + encodeURIComponent(peerId)
+            );
+
+            if (!response.ok) {
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success || !result.data) {
+                return;
+            }
+
+            if (!currentUser || (unreadVersions.get(peerId) || 0) !== version) {
+                return;
+            }
+
+            const count = Number(result.data.count || 0);
+
+            if (count > 0) {
+                unreadCounts.set(peerId, count);
+            } else {
+                unreadCounts.delete(peerId);
+            }
+
+            refreshOnlineUsers();
+        } catch (error) {
+            console.error("查询私聊未读消息失败", error);
+        }
     }
 
     async function checkLogin() {
@@ -502,8 +636,10 @@
             if (response.ok && result.success) {
                 currentUser = result.data;
                 showChat();
+
                 await loadInitialMessages();
                 connectWebSocket();
+
                 chatInput.focus();
             } else {
                 showLogin();
@@ -541,11 +677,13 @@
             currentUser = result.data;
             document.getElementById("password").value = "";
 
+            resetChatState();
             showChat();
+
             await loadInitialMessages();
             connectWebSocket();
-            chatInput.focus();
 
+            chatInput.focus();
         } catch (error) {
             loginMessage.textContent = "无法连接服务器";
         } finally {
@@ -553,15 +691,25 @@
         }
     });
 
+    // 加载公共聊天室初始消息
     async function loadInitialMessages() {
+        const token = ++viewToken;
+
+        activePeer = null;
+        chatTitle.textContent = "QChat · 公共聊天室";
+        chatInput.placeholder = "输入消息，按 Enter 发送";
+        publicChatItem.classList.add("active");
+
         chatMessages.innerHTML = "";
+        renderedMessageIds.clear();
+
         oldestMessageId = null;
         hasMoreHistory = true;
         historyButton.disabled = false;
 
         const response = await fetch("/api/messages");
 
-        if (!response.ok) {
+        if (token !== viewToken || !response.ok) {
             return;
         }
 
@@ -569,7 +717,7 @@
         const messages = result.data.messages || [];
 
         messages.forEach(message => {
-            appendMessage(message);
+            appendMessage(message, false);
         });
 
         if (messages.length > 0) {
@@ -583,6 +731,123 @@
         }
     }
 
+    // 切换到公共聊天室
+    async function switchToPublicChat() {
+        await loadInitialMessages();
+
+        Array.from(onlineUsersElement.children).forEach(item => {
+            item.classList.remove("active");
+        });
+
+        chatInput.focus();
+    }
+
+    // 打开私聊
+    async function openPrivateChat(user) {
+        if (!user || !currentUser ||
+            Number(user.id) === Number(currentUser.id)) {
+            return;
+        }
+
+        const token = ++viewToken;
+
+        activePeer = user;
+
+        chatTitle.textContent = "私聊 · " + user.username;
+        chatInput.placeholder = "发送给 " + user.username + "，按 Enter 发送";
+
+        publicChatItem.classList.remove("active");
+
+        Array.from(onlineUsersElement.children).forEach(item => {
+            item.classList.remove("active");
+        });
+
+        const selected = Array.from(onlineUsersElement.children).find(item => {
+            const name = item.querySelector(".online-username");
+            return name && name.textContent === user.username;
+        });
+
+        if (selected) {
+            selected.classList.add("active");
+        }
+
+        unreadCounts.delete(Number(user.id));
+        unreadVersions.set(Number(user.id), (unreadVersions.get(Number(user.id)) || 0) + 1);
+        refreshOnlineUsers();
+
+        chatMessages.innerHTML = "";
+        renderedMessageIds.clear();
+
+        oldestMessageId = null;
+        hasMoreHistory = true;
+        historyButton.disabled = false;
+
+        await loadPrivateMessages(null, token);
+
+        if (token === viewToken) {
+            chatInput.focus();
+        }
+    }
+
+    // 加载私聊历史消息
+    async function loadPrivateMessages(beforeId, token) {
+        if (!activePeer) {
+            return;
+        }
+
+        const peerId = Number(activePeer.id);
+
+        const url = "/api/private/messages?peer_id=" + encodeURIComponent(peerId)
+                    + (beforeId ? "&before_id=" + encodeURIComponent(beforeId) : "");
+
+        try {
+            const response = await fetch(url);
+
+            if (token !== viewToken || !response.ok) {
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success || !result.data) {
+                return;
+            }
+
+            if (token !== viewToken) {
+                return;
+            }
+
+            const messages = result.data.messages || [];
+
+            if (beforeId) {
+                messages.forEach(message => {
+                    prependMessage(message, true);
+                });
+            } else {
+                messages.forEach(message => {
+                    appendMessage(message, true);
+                });
+            }
+
+            if (messages.length > 0) {
+                oldestMessageId = messages[0].id;
+
+                if (!beforeId) {
+                    scrollToBottom();
+                }
+            }
+
+            hasMoreHistory = messages.length >= 50;
+            historyButton.disabled = !hasMoreHistory;
+
+            unreadCounts.delete(peerId);
+            refreshOnlineUsers();
+        } catch (error) {
+            console.error("加载私聊历史异常", error);
+        }
+    }
+
+    // 加载更早的消息
     async function loadOlderMessages() {
         if (loadingHistory || !hasMoreHistory || oldestMessageId === null) {
             return;
@@ -593,62 +858,92 @@
 
         const oldHeight = chatMessages.scrollHeight;
         const oldTop = chatMessages.scrollTop;
+        const token = viewToken;
 
         try {
-            const response = await fetch(
-                "/api/messages?before_id=" + encodeURIComponent(oldestMessageId)
-            );
+            if (activePeer) {
+                await loadPrivateMessages(oldestMessageId, token);
+            } else {
+                const response = await fetch(
+                    "/api/messages?before_id=" + encodeURIComponent(oldestMessageId)
+                );
 
-            if (!response.ok) {
-                return;
+                if (!response.ok || token !== viewToken) {
+                    return;
+                }
+
+                const result = await response.json();
+                const messages = result.data.messages || [];
+
+                if (messages.length === 0) {
+                    hasMoreHistory = false;
+                    return;
+                }
+
+                messages.forEach(message => {
+                    prependMessage(message, false);
+                });
+
+                oldestMessageId = messages[0].id;
+
+                if (messages.length < 50) {
+                    hasMoreHistory = false;
+                }
             }
 
-            const result = await response.json();
-            const messages = result.data.messages || [];
-
-            if (messages.length === 0) {
-                hasMoreHistory = false;
-                return;
+            if (token === viewToken) {
+                const newHeight = chatMessages.scrollHeight;
+                chatMessages.scrollTop = oldTop + (newHeight - oldHeight);
             }
-
-            messages.forEach(message => {
-                prependMessage(message);
-            });
-
-            oldestMessageId = messages[0].id;
-
-            if (messages.length < 50) {
-                hasMoreHistory = false;
-            }
-
-            const newHeight = chatMessages.scrollHeight;
-            chatMessages.scrollTop = oldTop + (newHeight - oldHeight);
-
+        } catch (error) {
+            console.error("加载更早消息失败", error);
         } finally {
             loadingHistory = false;
             historyButton.disabled = !hasMoreHistory;
         }
     }
 
-    function appendMessage(message) {
-        const element = createMessageElement(message);
+    // 追加消息，使用消息类型和 ID 去重
+    function appendMessage(message, isPrivate) {
+        const key = (isPrivate ? "p-" : "m-") + message.id;
+
+        if (renderedMessageIds.has(key)) {
+            return;
+        }
+
+        renderedMessageIds.add(key);
+
+        const element = createMessageElement(message, isPrivate);
         chatMessages.appendChild(element);
 
-        if (message.id < (oldestMessageId || Number.MAX_SAFE_INTEGER)) {
+        if (oldestMessageId === null || Number(message.id) < Number(oldestMessageId)) {
             oldestMessageId = message.id;
         }
     }
 
-    function prependMessage(message) {
-        const element = createMessageElement(message);
+    // 在消息列表顶部插入历史消息
+    function prependMessage(message, isPrivate) {
+        const key = (isPrivate ? "p-" : "m-") + message.id;
+
+        if (renderedMessageIds.has(key)) {
+            return;
+        }
+
+        renderedMessageIds.add(key);
+
+        const element = createMessageElement(message, isPrivate);
         chatMessages.insertBefore(element, chatMessages.firstChild);
     }
 
-    function createMessageElement(message) {
+    // 创建消息 DOM
+    function createMessageElement(message, isPrivate) {
         const wrapper = document.createElement("div");
         wrapper.className = "chat-message";
 
-        if (currentUser && message.user_id === currentUser.id) {
+        const senderId = isPrivate ? message.sender_id : message.user_id;
+        const senderName = isPrivate ? message.sender_name : message.username;
+
+        if (currentUser && Number(senderId) === Number(currentUser.id)) {
             wrapper.classList.add("mine");
         }
 
@@ -656,7 +951,7 @@
         info.className = "message-info";
 
         const date = new Date(message.created_at * 1000);
-        info.textContent = message.username + " · " + date.toLocaleString();
+        info.textContent = senderName + " · " + date.toLocaleString();
 
         const content = document.createElement("div");
         content.className = "message-content";
@@ -668,6 +963,7 @@
         return wrapper;
     }
 
+    // WebSocket 连接
     function connectWebSocket() {
         if (!currentUser) {
             return;
@@ -712,13 +1008,19 @@
                 const data = JSON.parse(event.data);
 
                 if (data.type === "message" && data.message) {
-                    appendMessage(data.message);
-                    scrollToBottom();
-
+                    if (!activePeer) {
+                        appendMessage(data.message, false);
+                        scrollToBottom();
+                    }
+                } else if (data.type === "private_message" && data.private_message) {
+                    handlePrivateMessage(data.private_message);
                 } else if (data.type === "online_users") {
                     renderOnlineUsers(data.users || [], data.count || 0);
+                } else if (data.type === "error") {
+                    console.error("服务器消息错误：", data.error);
+                    connectionStatus.textContent = "● " + (data.error || "消息发送失败");
+                    connectionStatus.className = "connection-status disconnected";
                 }
-
             } catch (error) {
                 console.error("消息解析失败", error);
             }
@@ -744,6 +1046,43 @@
         };
     }
 
+    // 接收私聊消息
+    function handlePrivateMessage(message) {
+        if (!currentUser) {
+            return;
+        }
+
+        const currentId = Number(currentUser.id);
+        const senderId = Number(message.sender_id);
+        const receiverId = Number(message.receiver_id);
+
+        const peerId = senderId === currentId ? receiverId : senderId;
+
+        // 当前正在与消息另一方聊天
+        if (activePeer && Number(activePeer.id) === peerId) {
+            appendMessage(message, true);
+            scrollToBottom();
+
+            if (receiverId === currentId) {
+                unreadCounts.delete(peerId);
+                unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
+            }
+
+            refreshOnlineUsers();
+            return;
+        }
+
+        // 当前用户是接收者，但没有打开对应私聊窗口
+        if (receiverId === currentId) {
+            const count = unreadCounts.get(peerId) || 0;
+            unreadCounts.set(peerId, count + 1);
+            unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
+
+            refreshOnlineUsers();
+        }
+    }
+
+    // 发送消息
     function sendMessage() {
         const content = chatInput.value.trim();
 
@@ -757,10 +1096,18 @@
             return;
         }
 
-        socket.send(JSON.stringify({
-            type: "message",
-            content: content
-        }));
+        if (activePeer) {
+            socket.send(JSON.stringify({
+                type: "private_message",
+                receiver_id: Number(activePeer.id),
+                content: content
+            }));
+        } else {
+            socket.send(JSON.stringify({
+                type: "message",
+                content: content
+            }));
+        }
 
         chatInput.value = "";
         chatInput.focus();
@@ -777,12 +1124,15 @@
 
     historyButton.addEventListener("click", loadOlderMessages);
 
+    publicChatItem.addEventListener("click", switchToPublicChat);
+
     function scrollToBottom() {
         requestAnimationFrame(function () {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         });
     }
 
+    // 退出登录
     document.getElementById("logoutButton").addEventListener("click", async function () {
         if (socket) {
             const oldSocket = socket;
@@ -792,14 +1142,19 @@
 
         socketConnecting = false;
 
-        await fetch("/api/logout", {
-            method: "POST"
-        });
+        try {
+            await fetch("/api/logout", {
+                method: "POST"
+            });
+        } catch (error) {
+            console.error("退出登录请求失败", error);
+        }
 
         currentUser = null;
-        chatMessages.innerHTML = "";
-        onlineUsersElement.innerHTML = "";
-        onlineCountElement.textContent = "0 人";
+        resetChatState();
+
+        connectionStatus.textContent = "正在连接...";
+        connectionStatus.className = "connection-status";
 
         showLogin();
     });

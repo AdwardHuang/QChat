@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,8 +38,9 @@ type ChatClient struct {
 }
 
 type ChatInput struct {
-	Type    string `json:"type"`
-	Content string `json:"content"`
+	Type       string `json:"type"`
+	Content    string `json:"content"`
+	ReceiverID int64  `json:"receiver_id"`
 }
 
 type OnlineUser struct {
@@ -47,10 +49,12 @@ type OnlineUser struct {
 }
 
 type ChatOutput struct {
-	Type    string            `json:"type"`
-	Message *database.Message `json:"message,omitempty"`
-	Users   []OnlineUser      `json:"users,omitempty"`
-	Count   int               `json:"count,omitempty"`
+	Type           string                   `json:"type"`
+	Message        *database.Message        `json:"message,omitempty"`
+	PrivateMessage *database.PrivateMessage `json:"private_message,omitempty"`
+	Users          []OnlineUser             `json:"users,omitempty"`
+	Count          int                      `json:"count,omitempty"`
+	Error          string                   `json:"error,omitempty"`
 }
 
 func NewChatHub(store *database.Store) *ChatHub {
@@ -111,6 +115,64 @@ func (h *ChatHub) Broadcast(message *database.Message) {
 	}
 }
 
+// 向私聊双方的所有在线连接推送消息。
+// 同一账号在多个浏览器登录时，所有浏览器都会收到。
+func (h *ChatHub) BroadcastPrivateMessage(message *database.PrivateMessage) {
+	data, err := json.Marshal(ChatOutput{
+		Type:           "private_message",
+		PrivateMessage: message,
+	})
+
+	if err != nil {
+		log.Println("私聊消息序列化失败:", err)
+		return
+	}
+
+	removed := false
+
+	h.mu.Lock()
+
+	for client := range h.clients {
+		if client.user.ID != message.SenderID &&
+			client.user.ID != message.ReceiverID {
+			continue
+		}
+
+		select {
+		case client.send <- data:
+		default:
+			log.Println("私聊发送队列已满，断开连接:", client.user.Username)
+			delete(h.clients, client)
+			close(client.send)
+			_ = client.conn.Close()
+			removed = true
+		}
+	}
+
+	h.mu.Unlock()
+
+	if removed {
+		h.BroadcastOnlineUsers()
+	}
+}
+
+func (h *ChatHub) SendError(client *ChatClient, message string) {
+	data, err := json.Marshal(ChatOutput{
+		Type:  "error",
+		Error: message,
+	})
+
+	if err != nil {
+		return
+	}
+
+	select {
+	case client.send <- data:
+	default:
+		log.Println("发送错误通知失败:", client.user.Username)
+	}
+}
+
 func (h *ChatHub) OnlineUsers() []OnlineUser {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -141,7 +203,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	// 先清理发送队列已经满的客户端。
 	for client := range h.clients {
 		if len(client.send) >= cap(client.send) {
 			log.Println("在线用户通知队列已满，断开连接:", client.user.Username)
@@ -151,7 +212,6 @@ func (h *ChatHub) BroadcastOnlineUsers() {
 		}
 	}
 
-	// 同一用户打开多个浏览器时，只统计一次。
 	userMap := make(map[int64]OnlineUser)
 
 	for client := range h.clients {
@@ -280,33 +340,81 @@ func (c *ChatClient) readPump() {
 			continue
 		}
 
-		if input.Type != "message" {
-			continue
+		switch input.Type {
+		case "message":
+			c.handlePublicMessage(input.Content)
+
+		case "private_message":
+			c.handlePrivateMessage(input.ReceiverID, input.Content)
 		}
-
-		content := input.Content
-
-		if len(content) == 0 {
-			continue
-		}
-
-		if len(content) > 2000 {
-			content = content[:2000]
-		}
-
-		message, err := c.hub.store.CreateMessage(
-			context.Background(),
-			c.user.ID,
-			content,
-		)
-
-		if err != nil {
-			log.Println("保存聊天消息失败:", err)
-			continue
-		}
-
-		c.hub.Broadcast(message)
 	}
+}
+
+func (c *ChatClient) handlePublicMessage(content string) {
+	content = strings.TrimSpace(content)
+
+	if content == "" {
+		return
+	}
+
+	runes := []rune(content)
+	if len(runes) > 2000 {
+		content = string(runes[:2000])
+	}
+
+	message, err := c.hub.store.CreateMessage(
+		context.Background(),
+		c.user.ID,
+		content,
+	)
+
+	if err != nil {
+		log.Println("保存公共消息失败:", err)
+		c.hub.SendError(c, "公共消息发送失败")
+		return
+	}
+
+	c.hub.Broadcast(message)
+}
+
+func (c *ChatClient) handlePrivateMessage(receiverID int64, content string) {
+	content = strings.TrimSpace(content)
+
+	if receiverID <= 0 {
+		c.hub.SendError(c, "接收者无效")
+		return
+	}
+
+	if receiverID == c.user.ID {
+		c.hub.SendError(c, "不能向自己发送私聊消息")
+		return
+	}
+
+	if content == "" {
+		return
+	}
+
+	runes := []rune(content)
+	if len(runes) > 2000 {
+		content = string(runes[:2000])
+	}
+
+	message, err := c.hub.store.CreatePrivateMessage(
+		context.Background(),
+		c.user.ID,
+		receiverID,
+		content,
+	)
+
+	if err != nil {
+		log.Println("保存私聊消息失败:", err)
+		c.hub.SendError(c, "私聊消息发送失败")
+		return
+	}
+
+	// 发送者和接收者的所有在线连接都会收到消息。
+	// 接收者离线时，消息仍然保存在数据库中。
+	c.hub.BroadcastPrivateMessage(message)
 }
 
 func (c *ChatClient) writePump() {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"qchat/web"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,7 +62,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/me", s.handleMe)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
+
+	// 公共聊天历史
 	s.mux.HandleFunc("/api/messages", s.handleMessages)
+
+	// 私聊历史和未读消息
+	s.mux.HandleFunc("/api/private/messages", s.handlePrivateMessages)
+	s.mux.HandleFunc("/api/private/unread", s.handlePrivateUnread)
 
 	s.mux.HandleFunc("/ws/chat", s.chatHub.ServeHTTP)
 
@@ -84,6 +91,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 
 	var req LoginRequest
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, APIResponse{
 			Success: false,
@@ -130,6 +138,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenBytes := make([]byte, 32)
+
 	if _, err := rand.Read(tokenBytes); err != nil {
 		writeJSON(w, http.StatusInternalServerError, APIResponse{
 			Success: false,
@@ -140,7 +149,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
 	tokenHash := hashToken(token)
-
 	expiresAt := time.Now().Add(time.Duration(s.sessionHours) * time.Hour)
 
 	if err := s.store.CreateSession(ctx, tokenHash, user.ID, expiresAt.Unix()); err != nil {
@@ -203,6 +211,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cookie, err := r.Cookie(sessionCookieName)
+
 	if err == nil {
 		_ = s.store.DeleteSession(context.Background(), hashToken(cookie.Value))
 	}
@@ -298,6 +307,123 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Message: "查询成功",
 		Data: map[string]any{
 			"messages": messages,
+		},
+	})
+}
+
+// 查询当前登录用户与指定用户之间的私聊历史。
+// GET /api/private/messages?peer_id=2&before_id=100
+func (s *Server) handlePrivateMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, err := s.currentUser(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "尚未登录或登录已过期",
+		})
+		return
+	}
+
+	peerID, err := strconv.ParseInt(r.URL.Query().Get("peer_id"), 10, 64)
+
+	if err != nil || peerID <= 0 || peerID == user.ID {
+		writeJSON(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Message: "私聊对象无效",
+		})
+		return
+	}
+
+	// 先将对方发给自己的未读消息标记为已读。
+	if err := s.store.MarkPrivateMessagesRead(
+		r.Context(),
+		user.ID,
+		peerID,
+	); err != nil {
+		writeJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "更新私聊已读状态失败",
+		})
+		return
+	}
+
+	messages, err := s.store.ListPrivateMessages(
+		r.Context(),
+		user.ID,
+		peerID,
+		parseBeforeID(r),
+		50,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "读取私聊历史失败",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "查询成功",
+		Data: map[string]any{
+			"peer_id":  peerID,
+			"messages": messages,
+		},
+	})
+}
+
+// 查询指定用户发给当前用户的未读私聊数量。
+// GET /api/private/unread?peer_id=2
+func (s *Server) handlePrivateUnread(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, err := s.currentUser(r)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "尚未登录或登录已过期",
+		})
+		return
+	}
+
+	peerID, err := strconv.ParseInt(r.URL.Query().Get("peer_id"), 10, 64)
+
+	if err != nil || peerID <= 0 || peerID == user.ID {
+		writeJSON(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Message: "私聊对象无效",
+		})
+		return
+	}
+
+	count, err := s.store.CountUnreadPrivateMessages(
+		r.Context(),
+		user.ID,
+		peerID,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "查询未读消息失败",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "查询成功",
+		Data: map[string]any{
+			"peer_id": peerID,
+			"count":   count,
 		},
 	})
 }

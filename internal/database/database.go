@@ -28,6 +28,18 @@ type Message struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+// PrivateMessage 私聊消息
+type PrivateMessage struct {
+	ID           int64  `json:"id"`
+	SenderID     int64  `json:"sender_id"`
+	SenderName   string `json:"sender_name"`
+	ReceiverID   int64  `json:"receiver_id"`
+	ReceiverName string `json:"receiver_name"`
+	Content      string `json:"content"`
+	CreatedAt    int64  `json:"created_at"`
+	IsRead       bool   `json:"is_read"`
+}
+
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 
@@ -107,6 +119,28 @@ func (s *Store) initTables() error {
 		created_at INTEGER NOT NULL,
 		FOREIGN KEY(user_id) REFERENCES users(id)
 	);
+
+	-- 私聊消息表
+	CREATE TABLE IF NOT EXISTS private_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		sender_id INTEGER NOT NULL,
+		receiver_id INTEGER NOT NULL,
+		content TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		is_read INTEGER NOT NULL DEFAULT 0,
+		CHECK(sender_id <> receiver_id),
+		FOREIGN KEY(sender_id) REFERENCES users(id),
+		FOREIGN KEY(receiver_id) REFERENCES users(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_private_messages_sender_receiver
+	ON private_messages(sender_id, receiver_id, id);
+
+	CREATE INDEX IF NOT EXISTS idx_private_messages_receiver_sender
+	ON private_messages(receiver_id, sender_id, id);
+
+	CREATE INDEX IF NOT EXISTS idx_private_messages_unread
+	ON private_messages(receiver_id, sender_id, is_read);
 	`
 
 	_, err := s.db.Exec(sqlText)
@@ -247,8 +281,7 @@ func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]
 			 WHERE m.id < ?
 			 ORDER BY m.id DESC
 			 LIMIT ?`,
-			beforeID,
-			limit,
+			beforeID, limit,
 		)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
@@ -295,4 +328,203 @@ func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]
 	}
 
 	return messages, nil
+}
+
+// CreatePrivateMessage 保存一条私聊消息。
+func (s *Store) CreatePrivateMessage(ctx context.Context, senderID, receiverID int64, content string) (*PrivateMessage, error) {
+	if senderID == receiverID {
+		return nil, fmt.Errorf("不能向自己发送私聊消息")
+	}
+
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO private_messages(sender_id, receiver_id, content, created_at)
+		 VALUES(?, ?, ?, unixepoch())`,
+		senderID, receiverID, content,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("保存私聊消息失败: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("读取私聊消息ID失败: %w", err)
+	}
+
+	message, err := s.getPrivateMessageByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
+// getPrivateMessageByID 根据消息ID读取私聊消息。
+func (s *Store) getPrivateMessageByID(ctx context.Context, id int64) (*PrivateMessage, error) {
+	var message PrivateMessage
+	var isRead int
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT
+			pm.id,
+			pm.sender_id,
+			sender.username,
+			pm.receiver_id,
+			receiver.username,
+			pm.content,
+			pm.created_at,
+			pm.is_read
+		 FROM private_messages pm
+		 JOIN users sender ON sender.id = pm.sender_id
+		 JOIN users receiver ON receiver.id = pm.receiver_id
+		 WHERE pm.id = ?`,
+		id,
+	).Scan(
+		&message.ID,
+		&message.SenderID,
+		&message.SenderName,
+		&message.ReceiverID,
+		&message.ReceiverName,
+		&message.Content,
+		&message.CreatedAt,
+		&isRead,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("读取私聊消息失败: %w", err)
+	}
+
+	message.IsRead = isRead != 0
+
+	return &message, nil
+}
+
+// ListPrivateMessages 查询当前用户与指定用户之间的私聊记录。
+// userID 是当前登录用户，peerID 是对方用户。
+// 只能查询两人之间的消息，不能查询其他用户的私聊记录。
+func (s *Store) ListPrivateMessages(ctx context.Context, userID, peerID, beforeID int64, limit int) ([]PrivateMessage, error) {
+	if userID <= 0 || peerID <= 0 || userID == peerID {
+		return nil, fmt.Errorf("无效的私聊用户")
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
+
+	query := `
+		SELECT
+			pm.id,
+			pm.sender_id,
+			sender.username,
+			pm.receiver_id,
+			receiver.username,
+			pm.content,
+			pm.created_at,
+			pm.is_read
+		FROM private_messages pm
+		JOIN users sender ON sender.id = pm.sender_id
+		JOIN users receiver ON receiver.id = pm.receiver_id
+		WHERE (
+			(pm.sender_id = ? AND pm.receiver_id = ?)
+			OR
+			(pm.sender_id = ? AND pm.receiver_id = ?)
+		)
+	`
+
+	args := []any{userID, peerID, peerID, userID}
+
+	if beforeID > 0 {
+		query += ` AND pm.id < ?`
+		args = append(args, beforeID)
+	}
+
+	query += ` ORDER BY pm.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("查询私聊历史失败: %w", err)
+	}
+
+	defer rows.Close()
+
+	messages := make([]PrivateMessage, 0, limit)
+
+	for rows.Next() {
+		var message PrivateMessage
+		var isRead int
+
+		if err := rows.Scan(
+			&message.ID,
+			&message.SenderID,
+			&message.SenderName,
+			&message.ReceiverID,
+			&message.ReceiverName,
+			&message.Content,
+			&message.CreatedAt,
+			&isRead,
+		); err != nil {
+			return nil, fmt.Errorf("读取私聊历史失败: %w", err)
+		}
+
+		message.IsRead = isRead != 0
+		messages = append(messages, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 按时间正序返回。
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// MarkPrivateMessagesRead 将指定发送者发给当前用户的消息标记为已读。
+func (s *Store) MarkPrivateMessagesRead(ctx context.Context, receiverID, senderID int64) error {
+	if receiverID <= 0 || senderID <= 0 || receiverID == senderID {
+		return fmt.Errorf("无效的私聊用户")
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE private_messages
+		 SET is_read = 1
+		 WHERE sender_id = ?
+		   AND receiver_id = ?
+		   AND is_read = 0`,
+		senderID, receiverID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("标记私聊消息已读失败: %w", err)
+	}
+
+	return nil
+}
+
+// CountUnreadPrivateMessages 查询指定发送者发给当前用户的未读消息数量。
+func (s *Store) CountUnreadPrivateMessages(ctx context.Context, receiverID, senderID int64) (int, error) {
+	var count int
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*)
+		 FROM private_messages
+		 WHERE receiver_id = ?
+		   AND sender_id = ?
+		   AND is_read = 0`,
+		receiverID, senderID,
+	).Scan(&count)
+
+	if err != nil {
+		return 0, fmt.Errorf("查询未读私聊消息失败: %w", err)
+	}
+
+	return count, nil
 }
