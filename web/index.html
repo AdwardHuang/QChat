@@ -1647,6 +1647,7 @@
 
 
 <script>
+
     (function () {
         "use strict";
 
@@ -1660,14 +1661,22 @@
             return;
         }
 
+        const MAX_FILE_SIZE = 20 * 1024 * 1024;
+        const ACK_TIMEOUT = 20000;
+
         const pendingAcks = new Map();
         const attachedSockets = new WeakSet();
 
         let requestCounter = 0;
-        let uploading = false;
+        let taskCounter = 0;
+        let processingQueue = false;
         let dragCounter = 0;
+        let activeTask = null;
 
-        // 文件选择按钮
+        const tasks = [];
+
+        // ==================== UI 初始化 ====================
+
         const fileButton = document.createElement("button");
         fileButton.type = "button";
         fileButton.textContent = "文件";
@@ -1675,20 +1684,63 @@
         fileButton.style.flexShrink = "0";
         fileButton.title = "选择文件上传";
 
-        // 文件选择框，支持多选
         const fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.multiple = true;
         fileInput.style.display = "none";
 
-        // 文件上传状态
         const fileStatus = document.createElement("div");
         fileStatus.style.marginTop = "6px";
         fileStatus.style.fontSize = "12px";
         fileStatus.style.color = "#8490a0";
         fileStatus.textContent = "支持拖拽文件到聊天窗口，单个文件最大 20 MB";
 
-        // 拖拽覆盖层
+        const queuePanel = document.createElement("div");
+        queuePanel.style.display = "none";
+        queuePanel.style.marginTop = "10px";
+        queuePanel.style.padding = "10px";
+        queuePanel.style.background = "#f7f9fc";
+        queuePanel.style.border = "1px solid #e5e8ed";
+        queuePanel.style.borderRadius = "8px";
+        queuePanel.style.maxHeight = "220px";
+        queuePanel.style.overflowY = "auto";
+
+        const queueHeader = document.createElement("div");
+        queueHeader.style.display = "flex";
+        queueHeader.style.justifyContent = "space-between";
+        queueHeader.style.alignItems = "center";
+        queueHeader.style.marginBottom = "8px";
+        queueHeader.style.fontSize = "12px";
+        queueHeader.style.fontWeight = "bold";
+
+        const queueTitle = document.createElement("span");
+        queueTitle.textContent = "上传队列";
+
+        const queueProgress = document.createElement("span");
+        queueProgress.style.color = "#2878e8";
+        queueHeader.appendChild(queueTitle);
+        queueHeader.appendChild(queueProgress);
+
+        const overallTrack = document.createElement("div");
+        overallTrack.style.height = "6px";
+        overallTrack.style.background = "#e2e7ef";
+        overallTrack.style.borderRadius = "4px";
+        overallTrack.style.overflow = "hidden";
+        overallTrack.style.marginBottom = "10px";
+
+        const overallBar = document.createElement("div");
+        overallBar.style.height = "100%";
+        overallBar.style.width = "0%";
+        overallBar.style.background = "#2878e8";
+        overallBar.style.transition = "width 0.15s";
+        overallTrack.appendChild(overallBar);
+
+        const taskList = document.createElement("div");
+
+        queuePanel.appendChild(queueHeader);
+        queuePanel.appendChild(overallTrack);
+        queuePanel.appendChild(taskList);
+
         const dropOverlay = document.createElement("div");
         dropOverlay.style.position = "absolute";
         dropOverlay.style.inset = "0";
@@ -1736,11 +1788,9 @@
         inputRow.insertBefore(fileButton, chatInputElement);
         chatInputArea.appendChild(fileInput);
         chatInputArea.appendChild(fileStatus);
+        chatInputArea.appendChild(queuePanel);
 
-        function setFileStatus(message, isError) {
-            fileStatus.textContent = message;
-            fileStatus.style.color = isError ? "#d44" : "#8490a0";
-        }
+        // ==================== 工具方法 ====================
 
         function formatFileSize(size) {
             size = Number(size || 0);
@@ -1756,6 +1806,15 @@
             return (size / 1024 / 1024).toFixed(2) + " MB";
         }
 
+        function formatPercent(value) {
+            return Math.max(0, Math.min(100, value)).toFixed(0) + "%";
+        }
+
+        function setFileStatus(message, isError) {
+            fileStatus.textContent = message;
+            fileStatus.style.color = isError ? "#d44" : "#8490a0";
+        }
+
         function createRequestId() {
             requestCounter++;
 
@@ -1765,6 +1824,226 @@
 
             return "file-" + Date.now() + "-" + requestCounter;
         }
+
+        function getCurrentTargetPeer() {
+            if (!activePeer) {
+                return null;
+            }
+
+            return {
+                id: Number(activePeer.id),
+                username: activePeer.username
+            };
+        }
+
+        function createTask(file, targetPeer) {
+            taskCounter++;
+
+            return {
+                id: taskCounter,
+                file: file,
+                targetPeer: targetPeer,
+                state: "queued",
+                loaded: 0,
+                xhr: null,
+                error: "",
+                messageId: null
+            };
+        }
+
+        function getTaskStatus(task) {
+            switch (task.state) {
+                case "queued":
+                    return "等待上传";
+                case "uploading":
+                    return "正在上传";
+                case "sending":
+                    return "等待服务器确认";
+                case "success":
+                    return "发送成功";
+                case "failed":
+                    return "发送失败";
+                case "cancelled":
+                    return "已取消";
+                default:
+                    return "";
+            }
+        }
+
+        function getTaskPercent(task) {
+            if (task.state === "success") {
+                return 100;
+            }
+
+            if (task.state === "sending") {
+                return 100;
+            }
+
+            if (task.file.size <= 0) {
+                return 0;
+            }
+
+            return Math.min(100, task.loaded / task.file.size * 100);
+        }
+
+        // ==================== 队列 UI ====================
+
+        function renderQueue() {
+            queuePanel.style.display = tasks.length > 0 ? "block" : "none";
+            taskList.innerHTML = "";
+
+            let totalBytes = 0;
+            let completedBytes = 0;
+            let completedCount = 0;
+            let finishedCount = 0;
+
+            tasks.forEach(function (task) {
+                totalBytes += task.file.size;
+
+                if (task.state === "success" || task.state === "sending") {
+                    completedBytes += task.file.size;
+                } else if (task.state === "failed") {
+                    completedBytes += task.loaded;
+                } else if (task.state === "cancelled") {
+                    completedBytes += task.loaded;
+                } else {
+                    completedBytes += task.loaded;
+                }
+
+                if (task.state === "success") {
+                    completedCount++;
+                }
+
+                if (
+                    task.state === "success" ||
+                    task.state === "failed" ||
+                    task.state === "cancelled"
+                ) {
+                    finishedCount++;
+                }
+
+                const item = document.createElement("div");
+                item.style.padding = "8px 0";
+                item.style.borderBottom = "1px solid #e8edf4";
+
+                const top = document.createElement("div");
+                top.style.display = "flex";
+                top.style.alignItems = "center";
+                top.style.justifyContent = "space-between";
+                top.style.gap = "8px";
+
+                const name = document.createElement("div");
+                name.textContent = task.file.name;
+                name.title = task.file.name;
+                name.style.minWidth = "0";
+                name.style.flex = "1";
+                name.style.overflow = "hidden";
+                name.style.textOverflow = "ellipsis";
+                name.style.whiteSpace = "nowrap";
+                name.style.fontSize = "12px";
+
+                const status = document.createElement("span");
+                status.textContent = getTaskStatus(task);
+                status.style.flexShrink = "0";
+                status.style.fontSize = "11px";
+
+                if (task.state === "success") {
+                    status.style.color = "#21864a";
+                } else if (task.state === "failed" || task.state === "cancelled") {
+                    status.style.color = "#d44";
+                } else {
+                    status.style.color = "#687386";
+                }
+
+                top.appendChild(name);
+                top.appendChild(status);
+
+                const bottom = document.createElement("div");
+                bottom.style.display = "flex";
+                bottom.style.alignItems = "center";
+                bottom.style.gap = "8px";
+                bottom.style.marginTop = "6px";
+
+                const track = document.createElement("div");
+                track.style.flex = "1";
+                track.style.height = "5px";
+                track.style.background = "#e2e7ef";
+                track.style.borderRadius = "4px";
+                track.style.overflow = "hidden";
+
+                const bar = document.createElement("div");
+                bar.style.height = "100%";
+                bar.style.width = getTaskPercent(task) + "%";
+                bar.style.transition = "width 0.15s";
+                bar.style.background = task.state === "failed" || task.state === "cancelled"
+                    ? "#d44"
+                    : task.state === "success" ? "#28a66a" : "#2878e8";
+
+                track.appendChild(bar);
+
+                const percent = document.createElement("span");
+                percent.textContent = formatPercent(getTaskPercent(task));
+                percent.style.width = "36px";
+                percent.style.textAlign = "right";
+                percent.style.fontSize = "11px";
+                percent.style.color = "#687386";
+
+                bottom.appendChild(track);
+                bottom.appendChild(percent);
+
+                const action = document.createElement("button");
+                action.type = "button";
+                action.textContent = "取消";
+                action.style.padding = "4px 9px";
+                action.style.fontSize = "11px";
+                action.style.flexShrink = "0";
+
+                if (task.state === "queued" || task.state === "uploading") {
+                    action.addEventListener("click", function () {
+                        cancelTask(task);
+                    });
+                } else {
+                    action.disabled = true;
+                    action.style.display = "none";
+                }
+
+                bottom.appendChild(action);
+
+                item.appendChild(top);
+                item.appendChild(bottom);
+
+                if (task.error) {
+                    const error = document.createElement("div");
+                    error.textContent = task.error;
+                    error.style.marginTop = "5px";
+                    error.style.fontSize = "11px";
+                    error.style.color = "#d44";
+                    error.style.overflowWrap = "anywhere";
+                    item.appendChild(error);
+                }
+
+                taskList.appendChild(item);
+            });
+
+            const percent = totalBytes > 0
+                ? completedBytes / totalBytes * 100
+                : 0;
+
+            overallBar.style.width = formatPercent(percent);
+            queueProgress.textContent =
+                completedCount + "/" + tasks.length + " 成功 · " +
+                finishedCount + "/" + tasks.length + " 完成";
+
+            if (tasks.length > 0) {
+                setFileStatus(
+                    "上传队列：" + finishedCount + "/" + tasks.length +
+                    " 个文件已处理",
+                    tasks.some(task => task.state === "failed")
+                );
+            }
+        }
+
+        // ==================== ACK 处理 ====================
 
         function finishPendingAck(requestId, error, ack) {
             const pending = pendingAcks.get(requestId);
@@ -1789,7 +2068,6 @@
             }
         }
 
-        // 监听文件消息 ACK，不覆盖原来的 WebSocket onmessage。
         function attachAckListener(ws) {
             if (!ws || attachedSockets.has(ws)) {
                 return;
@@ -1831,7 +2109,6 @@
             });
         }
 
-        // 上传完成后通过 WebSocket 发送文件消息。
         function sendUploadedFile(fileData, targetPeer) {
             return new Promise(function (resolve, reject) {
                 if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -1859,7 +2136,7 @@
                         requestId,
                         new Error("等待服务器确认超时，文件消息发送失败")
                     );
-                }, 20000);
+                }, ACK_TIMEOUT);
 
                 pendingAcks.set(requestId, {
                     resolve: resolve,
@@ -1878,72 +2155,196 @@
             });
         }
 
-        // 上传单个文件并等待消息 ACK。
-        async function uploadAndSendFile(file, targetPeer) {
+        // ==================== XHR 文件上传 ====================
+
+        function uploadFile(task) {
+            return new Promise(function (resolve, reject) {
+                const file = task.file;
+                const formData = new FormData();
+
+                formData.append("file", file);
+
+                const xhr = new XMLHttpRequest();
+                task.xhr = xhr;
+                task.state = "uploading";
+                task.loaded = 0;
+
+                xhr.open("POST", "/api/files/upload", true);
+
+                xhr.upload.onprogress = function (event) {
+                    if (event.lengthComputable) {
+                        task.loaded = event.loaded;
+                    } else {
+                        task.loaded = Math.min(event.loaded, file.size);
+                    }
+
+                    renderQueue();
+                };
+
+                xhr.onload = function () {
+                    task.xhr = null;
+
+                    if (task.state === "cancelled") {
+                        reject(new Error("上传已取消"));
+                        return;
+                    }
+
+                    let result;
+
+                    try {
+                        result = JSON.parse(xhr.responseText);
+                    } catch (error) {
+                        reject(new Error("服务器返回了无法识别的数据"));
+                        return;
+                    }
+
+                    if (xhr.status < 200 || xhr.status >= 300 ||
+                        !result.success || !result.data) {
+                        reject(new Error(result.message || "文件上传失败，HTTP " + xhr.status));
+                        return;
+                    }
+
+                    if (!result.data.id) {
+                        reject(new Error("上传成功，但服务器没有返回文件 ID"));
+                        return;
+                    }
+
+                    task.loaded = file.size;
+                    resolve(result.data);
+                };
+
+                xhr.onerror = function () {
+                    task.xhr = null;
+                    reject(new Error("网络错误，文件上传失败"));
+                };
+
+                xhr.ontimeout = function () {
+                    task.xhr = null;
+                    reject(new Error("文件上传超时"));
+                };
+
+                xhr.onabort = function () {
+                    task.xhr = null;
+                    reject(new Error("上传已取消"));
+                };
+
+                xhr.timeout = 0;
+
+                xhr.send(formData);
+            });
+        }
+
+        // ==================== 任务处理 ====================
+
+        async function processTask(task) {
             if (!currentUser) {
                 throw new Error("请先登录");
             }
 
-            if (file.size <= 0) {
-                throw new Error("不能发送空文件：" + file.name);
+            if (task.file.size <= 0) {
+                throw new Error("不能发送空文件");
             }
 
-            if (file.size > 20 * 1024 * 1024) {
-                throw new Error("文件超过 20 MB：" + file.name);
+            if (task.file.size > MAX_FILE_SIZE) {
+                throw new Error("文件超过 20 MB");
             }
 
-            const formData = new FormData();
-            formData.append("file", file);
+            const fileData = await uploadFile(task);
 
-            const response = await fetch("/api/files/upload", {
-                method: "POST",
-                body: formData
-            });
-
-            let result;
-
-            try {
-                result = await response.json();
-            } catch (error) {
-                throw new Error("服务器返回了无法识别的数据：" + file.name);
+            if (task.state === "cancelled") {
+                throw new Error("上传已取消");
             }
 
-            if (!response.ok || !result.success || !result.data) {
-                throw new Error(result.message || "文件上传失败：" + file.name);
-            }
+            task.state = "sending";
+            task.loaded = task.file.size;
+            renderQueue();
 
-            const fileData = result.data;
+            // 进入 sending 阶段后，不再提供取消操作。
+            // 因为服务器可能已经保存文件消息，不能保证撤销成功。
+            const ack = await sendUploadedFile(fileData, task.targetPeer);
 
-            if (!fileData.id) {
-                throw new Error("上传成功，但服务器没有返回文件 ID：" + file.name);
-            }
-
-            const ack = await sendUploadedFile(fileData, targetPeer);
-
-            return ack;
+            task.messageId = ack.message_id;
+            task.state = "success";
+            task.loaded = task.file.size;
+            renderQueue();
         }
 
-        // 获取当前聊天对象的快照，避免上传期间切换窗口造成发错人。
-        function getCurrentTargetPeer() {
-            if (!activePeer) {
-                return null;
-            }
-
-            return {
-                id: Number(activePeer.id),
-                username: activePeer.username
-            };
-        }
-
-        // 按顺序处理文件队列，避免同时上传多个大文件。
-        async function uploadFiles(files) {
-            if (!currentUser) {
-                setFileStatus("请先登录", true);
+        function cancelTask(task) {
+            if (task.state === "queued") {
+                task.state = "cancelled";
+                task.error = "用户取消";
+                renderQueue();
                 return;
             }
 
-            if (uploading) {
-                setFileStatus("当前正在上传文件，请稍候", true);
+            if (task.state === "uploading" && task.xhr) {
+                task.state = "cancelled";
+                task.error = "用户取消上传";
+                const xhr = task.xhr;
+                task.xhr = null;
+                xhr.abort();
+                renderQueue();
+            }
+        }
+
+        async function processQueue() {
+            if (processingQueue) {
+                return;
+            }
+
+            processingQueue = true;
+            fileButton.disabled = true;
+
+            try {
+                while (true) {
+                    const task = tasks.find(item => item.state === "queued");
+
+                    if (!task) {
+                        break;
+                    }
+
+                    activeTask = task;
+
+                    try {
+                        await processTask(task);
+                    } catch (error) {
+                        if (task.state !== "cancelled") {
+                            task.state = "failed";
+                            task.error = error.message || "发送失败";
+                            console.error("文件发送失败：", task.file.name, error);
+                        }
+                    }
+
+                    task.xhr = null;
+                    activeTask = null;
+                    renderQueue();
+                }
+            } finally {
+                processingQueue = false;
+                activeTask = null;
+                fileButton.disabled = false;
+                fileInput.disabled = false;
+
+                const successCount = tasks.filter(task => task.state === "success").length;
+                const failedCount = tasks.filter(task => task.state === "failed").length;
+                const cancelledCount = tasks.filter(task => task.state === "cancelled").length;
+
+                setFileStatus(
+                    "队列处理完成：成功 " + successCount +
+                    " 个，失败 " + failedCount +
+                    " 个，取消 " + cancelledCount + " 个",
+                    failedCount > 0
+                );
+
+                renderQueue();
+            }
+        }
+
+        // ==================== 添加任务 ====================
+
+        function enqueueFiles(files) {
+            if (!currentUser) {
+                setFileStatus("请先登录", true);
                 return;
             }
 
@@ -1953,82 +2354,33 @@
                 return;
             }
 
+            // 入队时固定目标，避免上传期间切换聊天窗口导致发错人。
             const targetPeer = getCurrentTargetPeer();
-            uploading = true;
-            fileButton.disabled = true;
-            fileInput.disabled = true;
 
-            let successCount = 0;
-            let failedCount = 0;
+            fileList.forEach(function (file) {
+                tasks.push(createTask(file, targetPeer));
+            });
 
-            try {
-                for (let i = 0; i < fileList.length; i++) {
-                    const file = fileList[i];
-
-                    setFileStatus(
-                        "正在处理第 " + (i + 1) + "/" + fileList.length +
-                        " 个文件：" + file.name,
-                        false
-                    );
-
-                    try {
-                        const ack = await uploadAndSendFile(file, targetPeer);
-                        successCount++;
-
-                        setFileStatus(
-                            "✓ " + file.name +
-                            "（" + formatFileSize(file.size) + "）发送成功，消息 ID：" +
-                            ack.message_id,
-                            false
-                        );
-
-                    } catch (error) {
-                        failedCount++;
-                        console.error("文件发送失败：", file.name, error);
-
-                        setFileStatus(
-                            "✗ " + file.name + "：" + (error.message || "发送失败"),
-                            true
-                        );
-                    }
-                }
-
-                if (failedCount === 0) {
-                    setFileStatus(
-                        "全部完成：成功发送 " + successCount + " 个文件",
-                        false
-                    );
-                } else {
-                    setFileStatus(
-                        "处理完成：成功 " + successCount +
-                        " 个，失败 " + failedCount +
-                        " 个。失败的文件可以重新选择或拖入上传。",
-                        true
-                    );
-                }
-
-            } finally {
-                uploading = false;
-                fileButton.disabled = false;
-                fileInput.disabled = false;
-                fileInput.value = "";
-            }
+            renderQueue();
+            processQueue();
         }
 
-        // 文件选择按钮。
+        // ==================== 文件选择 ====================
+
         fileButton.addEventListener("click", function () {
-            if (!uploading) {
-                fileInput.click();
-            }
+            fileInput.click();
         });
 
         fileInput.addEventListener("change", function () {
             if (fileInput.files && fileInput.files.length > 0) {
-                uploadFiles(fileInput.files);
+                enqueueFiles(fileInput.files);
             }
+
+            fileInput.value = "";
         });
 
-        // 判断拖拽内容是否包含文件。
+        // ==================== 拖拽上传 ====================
+
         function hasDraggedFiles(event) {
             const types = event.dataTransfer && event.dataTransfer.types;
 
@@ -2039,7 +2391,6 @@
             return Array.from(types).includes("Files");
         }
 
-        // 阻止浏览器默认打开拖入的文件。
         document.addEventListener("dragover", function (event) {
             if (hasDraggedFiles(event)) {
                 event.preventDefault();
@@ -2052,7 +2403,6 @@
             }
         });
 
-        // 拖入聊天窗口。
         chatContainer.addEventListener("dragenter", function (event) {
             if (!hasDraggedFiles(event)) {
                 return;
@@ -2103,11 +2453,12 @@
             dropOverlay.style.display = "none";
 
             if (event.dataTransfer && event.dataTransfer.files.length > 0) {
-                uploadFiles(event.dataTransfer.files);
+                enqueueFiles(event.dataTransfer.files);
             }
         });
 
-        // 文件消息渲染。
+        // ==================== 文件消息渲染 ====================
+
         const originalCreateMessageElement = createMessageElement;
 
         createMessageElement = function (message, isPrivate) {
@@ -2190,8 +2541,9 @@
             return wrapper;
         };
 
-        console.log("QChat 文件拖拽上传功能已初始化");
+        console.log("QChat 0.7 文件上传队列初始化完成");
     })();
+
 </script>
 
 
