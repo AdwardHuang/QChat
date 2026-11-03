@@ -1,17 +1,16 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>QChat - 局域网聊天室</title>
-
     <style>
         * {
             box-sizing: border-box;
         }
 
-        html,
-        body {
+        html, body {
             margin: 0;
             width: 100%;
             height: 100%;
@@ -27,7 +26,6 @@
             background: white;
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-
             position: absolute;
             left: 50%;
             top: 50%;
@@ -142,6 +140,77 @@
             flex: 1;
             min-height: 0;
             display: flex;
+            flex-direction: row;
+        }
+
+        /* 在线用户侧边栏 */
+        .online-panel {
+            width: 220px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-right: 1px solid #e5e8ed;
+            overflow-y: auto;
+        }
+
+        .online-header {
+            height: 48px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            border-bottom: 1px solid #f0f1f3;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .online-count {
+            color: #8490a0;
+            font-size: 12px;
+            font-weight: normal;
+        }
+
+        .online-user {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 11px 15px;
+            font-size: 13px;
+        }
+
+        .online-user:hover {
+            background: #f5f7fa;
+        }
+
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background: #28b56a;
+        }
+
+        .online-username {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .online-me {
+            color: #2878e8;
+            font-size: 11px;
+        }
+
+        /* 右侧聊天内容 */
+        .chat-content {
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
             flex-direction: column;
         }
 
@@ -247,6 +316,21 @@
                 padding: 0 12px;
             }
 
+            .online-panel {
+                width: 110px;
+            }
+
+            .online-header {
+                padding: 0 8px;
+                font-size: 12px;
+            }
+
+            .online-user {
+                gap: 5px;
+                padding: 10px 7px;
+                font-size: 12px;
+            }
+
             .chat-messages {
                 padding-left: 10px;
                 padding-right: 10px;
@@ -269,97 +353,82 @@
     </div>
 
     <form id="loginForm">
-
         <div class="form-item">
             <label for="username">用户名</label>
-            <input autocomplete="username"
-                   id="username"
-                   required>
+            <input autocomplete="username" id="username" required>
         </div>
 
         <div class="form-item">
             <label for="password">密码</label>
-            <input autocomplete="current-password"
-                   id="password"
-                   required
-                   type="password">
+            <input autocomplete="current-password" id="password" required type="password">
         </div>
 
-        <button class="login-button"
-                id="loginButton"
-                type="submit">
+        <button class="login-button" id="loginButton" type="submit">
             登 录
         </button>
 
-        <div class="message-error"
-             id="loginMessage"></div>
+        <div class="message-error" id="loginMessage"></div>
     </form>
 </div>
-
 
 <div class="chat-container" id="chatContainer">
 
     <div class="chat-header">
-
         <div class="chat-title">
             QChat · 公共聊天室
         </div>
 
         <div class="chat-user">
             <span id="currentUsername"></span>
-
-            <button class="logout-button"
-                    id="logoutButton">
+            <button class="logout-button" id="logoutButton">
                 退出
             </button>
         </div>
-
     </div>
-
 
     <div class="chat-main">
 
-        <div class="history-button-container">
-
-            <button class="history-button"
-                    id="historyButton">
-                加载更早的消息
-            </button>
-
+        <!-- 在线用户列表 -->
+        <div class="online-panel">
+            <div class="online-header">
+                <span>在线用户</span>
+                <span class="online-count" id="onlineCount">0 人</span>
+            </div>
+            <div id="onlineUsers"></div>
         </div>
 
-        <div class="chat-messages"
-             id="chatMessages">
-        </div>
+        <!-- 聊天消息区域 -->
+        <div class="chat-content">
 
+            <div class="history-button-container">
+                <button class="history-button" id="historyButton">
+                    加载更早的消息
+                </button>
+            </div>
+
+            <div class="chat-messages" id="chatMessages"></div>
+
+        </div>
     </div>
 
-
     <div class="chat-input-area">
-
         <div class="chat-input-row">
-
             <input class="chat-input"
                    id="chatInput"
                    maxlength="2000"
                    placeholder="输入消息，按 Enter 发送">
 
-            <button class="send-button"
-                    id="sendButton">
+            <button class="send-button" id="sendButton">
                 发送
             </button>
-
         </div>
 
-        <div class="connection-status"
-             id="connectionStatus">
+        <div class="connection-status" id="connectionStatus">
             正在连接...
         </div>
-
     </div>
 
 </div>
-
 
 <script>
     let currentUser = null;
@@ -368,24 +437,21 @@
     let oldestMessageId = null;
     let loadingHistory = false;
     let hasMoreHistory = true;
+
     const loginContainer = document.getElementById("loginContainer");
     const chatContainer = document.getElementById("chatContainer");
-    const loginForm =
-        document.getElementById("loginForm");
-    const loginButton =
-        document.getElementById("loginButton");
-    const loginMessage =
-        document.getElementById("loginMessage");
-    const chatMessages =
-        document.getElementById("chatMessages");
-    const chatInput =
-        document.getElementById("chatInput");
-    const sendButton =
-        document.getElementById("sendButton");
-    const historyButton =
-        document.getElementById("historyButton");
-    const connectionStatus =
-        document.getElementById("connectionStatus");
+    const loginForm = document.getElementById("loginForm");
+    const loginButton = document.getElementById("loginButton");
+    const loginMessage = document.getElementById("loginMessage");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const sendButton = document.getElementById("sendButton");
+    const historyButton = document.getElementById("historyButton");
+    const connectionStatus = document.getElementById("connectionStatus");
+
+    // 在线用户列表元素
+    const onlineUsersElement = document.getElementById("onlineUsers");
+    const onlineCountElement = document.getElementById("onlineCount");
 
     function showLogin() {
         loginContainer.style.display = "block";
@@ -395,16 +461,44 @@
     function showChat() {
         loginContainer.style.display = "none";
         chatContainer.style.display = "flex";
-        document.getElementById("currentUsername").textContent =
-            currentUser.username;
+        document.getElementById("currentUsername").textContent = currentUser.username;
+    }
+
+    // 渲染在线用户列表
+    function renderOnlineUsers(users, count) {
+        onlineUsersElement.innerHTML = "";
+        onlineCountElement.textContent = count + " 人";
+
+        users.forEach(user => {
+            const item = document.createElement("div");
+            item.className = "online-user";
+
+            const dot = document.createElement("span");
+            dot.className = "online-dot";
+
+            const username = document.createElement("span");
+            username.className = "online-username";
+            username.textContent = user.username;
+
+            item.appendChild(dot);
+            item.appendChild(username);
+
+            if (currentUser && user.id === currentUser.id) {
+                const me = document.createElement("span");
+                me.className = "online-me";
+                me.textContent = "我";
+                item.appendChild(me);
+            }
+
+            onlineUsersElement.appendChild(item);
+        });
     }
 
     async function checkLogin() {
         try {
-            const response =
-                await fetch("/api/me");
-            const result =
-                await response.json();
+            const response = await fetch("/api/me");
+            const result = await response.json();
+
             if (response.ok && result.success) {
                 currentUser = result.data;
                 showChat();
@@ -415,75 +509,74 @@
                 showLogin();
             }
         } catch (error) {
-            loginMessage.textContent =
-                "无法连接服务器";
+            loginMessage.textContent = "无法连接服务器";
         }
     }
 
-    loginForm.addEventListener(
-        "submit",
-        async function (event) {
-            event.preventDefault();
-            loginButton.disabled = true;
-            loginMessage.textContent = "";
-            try {
-                const response =
-                    await fetch("/api/login", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            username:
-                            document.getElementById("username").value,
-                            password:
-                            document.getElementById("password").value
-                        })
-                    });
-                const result =
-                    await response.json();
-                if (!response.ok || !result.success) {
-                    loginMessage.textContent =
-                        result.message || "登录失败";
-                    return;
-                }
-                currentUser = result.data;
-                document.getElementById("password").value = "";
-                showChat();
-                await loadInitialMessages();
-                connectWebSocket();
-                chatInput.focus();
-            } catch (error) {
-                loginMessage.textContent =
-                    "无法连接服务器";
-            } finally {
-                loginButton.disabled = false;
+    loginForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        loginButton.disabled = true;
+        loginMessage.textContent = "";
+
+        try {
+            const response = await fetch("/api/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username: document.getElementById("username").value,
+                    password: document.getElementById("password").value
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                loginMessage.textContent = result.message || "登录失败";
+                return;
             }
+
+            currentUser = result.data;
+            document.getElementById("password").value = "";
+
+            showChat();
+            await loadInitialMessages();
+            connectWebSocket();
+            chatInput.focus();
+
+        } catch (error) {
+            loginMessage.textContent = "无法连接服务器";
+        } finally {
+            loginButton.disabled = false;
         }
-    );
+    });
 
     async function loadInitialMessages() {
         chatMessages.innerHTML = "";
         oldestMessageId = null;
         hasMoreHistory = true;
         historyButton.disabled = false;
-        const response =
-            await fetch("/api/messages");
+
+        const response = await fetch("/api/messages");
+
         if (!response.ok) {
             return;
         }
-        const result =
-            await response.json();
-        const messages =
-            result.data.messages || [];
+
+        const result = await response.json();
+        const messages = result.data.messages || [];
+
         messages.forEach(message => {
             appendMessage(message);
         });
+
         if (messages.length > 0) {
-            oldestMessageId =
-                messages[0].id;
+            oldestMessageId = messages[0].id;
             scrollToBottom();
         }
+
         if (messages.length < 50) {
             hasMoreHistory = false;
             historyButton.disabled = true;
@@ -491,98 +584,87 @@
     }
 
     async function loadOlderMessages() {
-        if (loadingHistory ||
-            !hasMoreHistory ||
-            oldestMessageId === null) {
+        if (loadingHistory || !hasMoreHistory || oldestMessageId === null) {
             return;
         }
+
         loadingHistory = true;
         historyButton.disabled = true;
-        const oldHeight =
-            chatMessages.scrollHeight;
-        const oldTop =
-            chatMessages.scrollTop;
+
+        const oldHeight = chatMessages.scrollHeight;
+        const oldTop = chatMessages.scrollTop;
+
         try {
-            const response =
-                await fetch(
-                    "/api/messages?before_id=" +
-                    encodeURIComponent(oldestMessageId)
-                );
+            const response = await fetch(
+                "/api/messages?before_id=" + encodeURIComponent(oldestMessageId)
+            );
+
             if (!response.ok) {
                 return;
             }
-            const result =
-                await response.json();
-            const messages =
-                result.data.messages || [];
+
+            const result = await response.json();
+            const messages = result.data.messages || [];
+
             if (messages.length === 0) {
                 hasMoreHistory = false;
                 return;
             }
+
             messages.forEach(message => {
                 prependMessage(message);
             });
-            oldestMessageId =
-                messages[0].id;
+
+            oldestMessageId = messages[0].id;
+
             if (messages.length < 50) {
                 hasMoreHistory = false;
             }
-            const newHeight =
-                chatMessages.scrollHeight;
-            chatMessages.scrollTop =
-                oldTop + (newHeight - oldHeight);
+
+            const newHeight = chatMessages.scrollHeight;
+            chatMessages.scrollTop = oldTop + (newHeight - oldHeight);
+
         } finally {
             loadingHistory = false;
-            historyButton.disabled =
-                !hasMoreHistory;
+            historyButton.disabled = !hasMoreHistory;
         }
     }
 
     function appendMessage(message) {
-        const element =
-            createMessageElement(message);
+        const element = createMessageElement(message);
         chatMessages.appendChild(element);
+
         if (message.id < (oldestMessageId || Number.MAX_SAFE_INTEGER)) {
             oldestMessageId = message.id;
         }
     }
 
     function prependMessage(message) {
-        const element =
-            createMessageElement(message);
-        chatMessages.insertBefore(
-            element,
-            chatMessages.firstChild
-        );
+        const element = createMessageElement(message);
+        chatMessages.insertBefore(element, chatMessages.firstChild);
     }
 
     function createMessageElement(message) {
-        const wrapper =
-            document.createElement("div");
-        wrapper.className =
-            "chat-message";
-        if (currentUser &&
-            message.user_id === currentUser.id) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "chat-message";
+
+        if (currentUser && message.user_id === currentUser.id) {
             wrapper.classList.add("mine");
         }
-        const info =
-            document.createElement("div");
-        info.className =
-            "message-info";
-        const date =
-            new Date(message.created_at * 1000);
-        info.textContent =
-            message.username +
-            " · " +
-            date.toLocaleString();
-        const content =
-            document.createElement("div");
-        content.className =
-            "message-content";
-        content.textContent =
-            message.content;
+
+        const info = document.createElement("div");
+        info.className = "message-info";
+
+        const date = new Date(message.created_at * 1000);
+        info.textContent = message.username + " · " + date.toLocaleString();
+
+        const content = document.createElement("div");
+        content.className = "message-content";
+        content.textContent = message.content;
+
         wrapper.appendChild(info);
         wrapper.appendChild(content);
+
         return wrapper;
     }
 
@@ -590,143 +672,138 @@
         if (!currentUser) {
             return;
         }
+
         if (socket &&
             (socket.readyState === WebSocket.OPEN ||
              socket.readyState === WebSocket.CONNECTING)) {
             return;
         }
+
         if (socketConnecting) {
             return;
         }
+
         socketConnecting = true;
-        const protocol =
-            location.protocol === "https:"
-                ? "wss:"
-                : "ws:";
-        const url =
-            protocol +
-            "//" +
-            location.host +
-            "/ws/chat";
+
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const url = protocol + "//" + location.host + "/ws/chat";
+
         const newSocket = new WebSocket(url);
         socket = newSocket;
+
         newSocket.onopen = function () {
             socketConnecting = false;
+
             if (socket !== newSocket) {
                 newSocket.close();
                 return;
             }
+
             connectionStatus.textContent = "● 已连接";
-            connectionStatus.className =
-                "connection-status connected";
+            connectionStatus.className = "connection-status connected";
         };
+
         newSocket.onmessage = function (event) {
             if (socket !== newSocket) {
                 return;
             }
+
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === "message" &&
-                    data.message) {
+
+                if (data.type === "message" && data.message) {
                     appendMessage(data.message);
                     scrollToBottom();
+
+                } else if (data.type === "online_users") {
+                    renderOnlineUsers(data.users || [], data.count || 0);
                 }
+
             } catch (error) {
                 console.error("消息解析失败", error);
             }
         };
+
         newSocket.onclose = function () {
             socketConnecting = false;
+
             if (socket === newSocket) {
                 socket = null;
-                connectionStatus.textContent =
-                    "● 连接已断开";
-                connectionStatus.className =
-                    "connection-status disconnected";
+                connectionStatus.textContent = "● 连接已断开";
+                connectionStatus.className = "connection-status disconnected";
             }
         };
+
         newSocket.onerror = function () {
             socketConnecting = false;
+
             if (socket === newSocket) {
-                connectionStatus.textContent =
-                    "● 连接错误";
-                connectionStatus.className =
-                    "connection-status disconnected";
+                connectionStatus.textContent = "● 连接错误";
+                connectionStatus.className = "connection-status disconnected";
             }
         };
     }
 
     function sendMessage() {
-        const content =
-            chatInput.value.trim();
+        const content = chatInput.value.trim();
+
         if (!content) {
             return;
         }
-        if (!socket ||
-            socket.readyState !== WebSocket.OPEN) {
-            connectionStatus.textContent =
-                "● WebSocket 未连接";
-            connectionStatus.className =
-                "connection-status disconnected";
+
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connectionStatus.textContent = "● WebSocket 未连接";
+            connectionStatus.className = "connection-status disconnected";
             return;
         }
-        socket.send(
-            JSON.stringify({
-                type: "message",
-                content: content
-            })
-        );
+
+        socket.send(JSON.stringify({
+            type: "message",
+            content: content
+        }));
+
         chatInput.value = "";
         chatInput.focus();
     }
 
-    sendButton.addEventListener(
-        "click",
-        sendMessage
-    );
-    chatInput.addEventListener(
-        "keydown",
-        function (event) {
-            if (event.key === "Enter" &&
-                !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
+    sendButton.addEventListener("click", sendMessage);
+
+    chatInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
         }
-    );
-    historyButton.addEventListener(
-        "click",
-        loadOlderMessages
-    );
+    });
+
+    historyButton.addEventListener("click", loadOlderMessages);
 
     function scrollToBottom() {
         requestAnimationFrame(function () {
-            chatMessages.scrollTop =
-                chatMessages.scrollHeight;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         });
     }
 
-    document.getElementById("logoutButton")
-        .addEventListener(
-            "click",
-            async function () {
-                if (socket) {
-                    const oldSocket = socket;
-                    socket = null;
-                    oldSocket.close();
-                }
-                socketConnecting = false;
-                await fetch(
-                    "/api/logout",
-                    {
-                        method: "POST"
-                    }
-                );
-                currentUser = null;
-                chatMessages.innerHTML = "";
-                showLogin();
-            }
-        );
+    document.getElementById("logoutButton").addEventListener("click", async function () {
+        if (socket) {
+            const oldSocket = socket;
+            socket = null;
+            oldSocket.close();
+        }
+
+        socketConnecting = false;
+
+        await fetch("/api/logout", {
+            method: "POST"
+        });
+
+        currentUser = null;
+        chatMessages.innerHTML = "";
+        onlineUsersElement.innerHTML = "";
+        onlineCountElement.textContent = "0 人";
+
+        showLogin();
+    });
+
     checkLogin();
 </script>
 
