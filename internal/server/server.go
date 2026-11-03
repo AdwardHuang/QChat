@@ -24,6 +24,7 @@ type Server struct {
 	store        *database.Store
 	sessionHours int
 	mux          *http.ServeMux
+	chatHub      *ChatHub
 }
 
 type LoginRequest struct {
@@ -44,7 +45,10 @@ func New(store *database.Store, sessionHours int) *Server {
 		mux:          http.NewServeMux(),
 	}
 
+	s.chatHub = NewChatHub(store)
+
 	s.routes()
+
 	return s
 }
 
@@ -57,6 +61,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/login", s.handleLogin)
 	s.mux.HandleFunc("/api/me", s.handleMe)
 	s.mux.HandleFunc("/api/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/messages", s.handleMessages)
+
+	s.mux.HandleFunc("/ws/chat", s.chatHub.ServeHTTP)
 
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -254,4 +261,43 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(data)
+}
+
+func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, err := s.currentUser(r); err != nil {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "尚未登录或登录已过期",
+		})
+		return
+	}
+
+	beforeID := parseBeforeID(r)
+
+	messages, err := s.store.ListMessages(
+		r.Context(),
+		beforeID,
+		50,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "读取历史消息失败",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "查询成功",
+		Data: map[string]any{
+			"messages": messages,
+		},
+	})
 }

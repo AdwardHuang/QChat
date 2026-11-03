@@ -20,6 +20,14 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
+type Message struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Username  string `json:"username"`
+	Content   string `json:"content"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 func Open(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 
@@ -179,4 +187,112 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 		tokenHash)
 
 	return err
+}
+
+func (s *Store) CreateMessage(ctx context.Context, userID int64, content string) (*Message, error) {
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO messages(user_id, content, created_at)
+		 VALUES(?, ?, unixepoch())`,
+		userID, content)
+
+	if err != nil {
+		return nil, fmt.Errorf("保存消息失败: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("读取消息ID失败: %w", err)
+	}
+
+	var message Message
+
+	err = s.db.QueryRowContext(ctx,
+		`SELECT m.id, m.user_id, u.username, m.content, m.created_at
+		 FROM messages m
+		 JOIN users u ON u.id = m.user_id
+		 WHERE m.id = ?`,
+		id,
+	).Scan(
+		&message.ID,
+		&message.UserID,
+		&message.Username,
+		&message.Content,
+		&message.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("读取新消息失败: %w", err)
+	}
+
+	return &message, nil
+}
+
+func (s *Store) ListMessages(ctx context.Context, beforeID int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
+
+	var rows *sql.Rows
+	var err error
+
+	if beforeID > 0 {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT m.id, m.user_id, u.username, m.content, m.created_at
+			 FROM messages m
+			 JOIN users u ON u.id = m.user_id
+			 WHERE m.id < ?
+			 ORDER BY m.id DESC
+			 LIMIT ?`,
+			beforeID,
+			limit,
+		)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT m.id, m.user_id, u.username, m.content, m.created_at
+			 FROM messages m
+			 JOIN users u ON u.id = m.user_id
+			 ORDER BY m.id DESC
+			 LIMIT ?`,
+			limit,
+		)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("查询历史消息失败: %w", err)
+	}
+
+	defer rows.Close()
+
+	messages := make([]Message, 0, limit)
+
+	for rows.Next() {
+		var message Message
+
+		if err := rows.Scan(
+			&message.ID,
+			&message.UserID,
+			&message.Username,
+			&message.Content,
+			&message.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("读取历史消息失败: %w", err)
+		}
+
+		messages = append(messages, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 数据库查询是 DESC，因此返回给前端时反转成正序。
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
 }

@@ -2,45 +2,49 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>QChat - 局域网聊天室</title>
+
     <style>
         * {
             box-sizing: border-box;
         }
 
+        html,
         body {
             margin: 0;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f3f5f9;
+            width: 100%;
+            height: 100%;
             font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: #f3f5f9;
             color: #303846;
         }
 
-        .container {
+        .login-container {
             width: 400px;
             max-width: calc(100% - 32px);
             padding: 36px;
             background: white;
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
         }
 
-        h1 {
+        .login-container h1 {
             margin: 0;
-            color: #2878e8;
             text-align: center;
-            font-size: 30px;
+            color: #2878e8;
         }
 
         .subtitle {
             margin: 12px 0 30px;
+            text-align: center;
             color: #8490a0;
             font-size: 14px;
-            text-align: center;
         }
 
         .form-item {
@@ -68,13 +72,10 @@
         }
 
         button {
-            width: 100%;
-            height: 44px;
             border: none;
             border-radius: 6px;
             background: #2878e8;
             color: white;
-            font-size: 15px;
             cursor: pointer;
         }
 
@@ -82,158 +83,652 @@
             background: #1766d4;
         }
 
-        button:disabled {
-            opacity: 0.6;
+        .login-button {
+            width: 100%;
+            height: 44px;
+            font-size: 15px;
+        }
+
+        .message-error {
+            min-height: 20px;
+            margin-top: 14px;
+            text-align: center;
+            color: #d44;
+            font-size: 13px;
+        }
+
+        .chat-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            height: 60px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            background: white;
+            border-bottom: 1px solid #e5e8ed;
+        }
+
+        .chat-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2878e8;
+        }
+
+        .chat-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+        }
+
+        .logout-button {
+            padding: 7px 14px;
+            background: #f1f3f6;
+            color: #555;
+        }
+
+        .logout-button:hover {
+            background: #e5e8ed;
+        }
+
+        .chat-main {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-button-container {
+            padding: 10px;
+            text-align: center;
+        }
+
+        .history-button {
+            padding: 7px 14px;
+            background: #f1f3f6;
+            color: #555;
+            font-size: 12px;
+        }
+
+        .history-button:hover {
+            background: #e5e8ed;
+        }
+
+        .history-button:disabled {
+            opacity: 0.5;
             cursor: not-allowed;
         }
 
-        .message {
-            margin-top: 16px;
-            min-height: 20px;
-            color: #d44;
-            font-size: 13px;
-            text-align: center;
+        .chat-messages {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 10px 20px 20px;
         }
 
-        .user-panel {
-            display: none;
-            text-align: center;
+        .chat-message {
+            margin-bottom: 16px;
         }
 
-        .success {
-            margin: 25px 0;
-            padding: 18px;
-            background: #eaf8ef;
-            color: #21864a;
-            border-radius: 8px;
-        }
-
-        .version {
-            margin-top: 25px;
-            color: #a0a8b4;
+        .message-info {
+            margin-bottom: 4px;
+            color: #8b94a1;
             font-size: 12px;
-            text-align: center;
+        }
+
+        .message-content {
+            display: inline-block;
+            max-width: min(700px, 80%);
+            padding: 10px 13px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.mine .message-info {
+            text-align: right;
+        }
+
+        .chat-message.mine {
+            text-align: right;
+        }
+
+        .chat-message.mine .message-content {
+            background: #2878e8;
+            color: white;
+            text-align: left;
+        }
+
+        .chat-input-area {
+            padding: 12px;
+            background: white;
+            border-top: 1px solid #e5e8ed;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            height: 42px;
+        }
+
+        .send-button {
+            width: 80px;
+        }
+
+        .connection-status {
+            margin-top: 6px;
+            color: #8490a0;
+            font-size: 12px;
+        }
+
+        .connection-status.connected {
+            color: #21864a;
+        }
+
+        .connection-status.disconnected {
+            color: #d44;
+        }
+
+        @media (max-width: 600px) {
+            .chat-header {
+                padding: 0 12px;
+            }
+
+            .chat-messages {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+
+            .message-content {
+                max-width: 90%;
+            }
         }
     </style>
 </head>
+
 <body>
-<div class="container">
+
+<div class="login-container" id="loginContainer">
     <h1>QChat</h1>
-    <div class="subtitle">轻量级局域网聊天室</div>
+
+    <div class="subtitle">
+        轻量级局域网聊天室
+    </div>
 
     <form id="loginForm">
+
         <div class="form-item">
             <label for="username">用户名</label>
-            <input id="username" autocomplete="username" required>
+            <input autocomplete="username"
+                   id="username"
+                   required>
         </div>
 
         <div class="form-item">
             <label for="password">密码</label>
-            <input id="password" type="password"
-                   autocomplete="current-password" required>
+            <input autocomplete="current-password"
+                   id="password"
+                   required
+                   type="password">
         </div>
 
-        <button id="loginButton" type="submit">登 录</button>
-        <div class="message" id="message"></div>
+        <button class="login-button"
+                id="loginButton"
+                type="submit">
+            登 录
+        </button>
+
+        <div class="message-error"
+             id="loginMessage"></div>
     </form>
-
-    <div class="user-panel" id="userPanel">
-        <div class="success">
-            登录成功，欢迎回来！
-        </div>
-
-        <div>
-            当前用户：<strong id="currentUsername"></strong>
-        </div>
-
-        <p style="color:#8490a0;font-size:13px;">
-            QChat 服务端运行正常
-        </p>
-
-        <button id="logoutButton" type="button">退出登录</button>
-    </div>
-
-    <div class="version">
-        QChat 0.1.0
-    </div>
 </div>
 
-<script>
-    const loginForm = document.getElementById("loginForm");
-    const loginButton = document.getElementById("loginButton");
-    const message = document.getElementById("message");
-    const userPanel = document.getElementById("userPanel");
 
-    function showUser(user) {
-        loginForm.style.display = "none";
-        userPanel.style.display = "block";
-        document.getElementById("currentUsername").textContent = user.username;
-    }
+<div class="chat-container" id="chatContainer">
+
+    <div class="chat-header">
+
+        <div class="chat-title">
+            QChat · 公共聊天室
+        </div>
+
+        <div class="chat-user">
+            <span id="currentUsername"></span>
+
+            <button class="logout-button"
+                    id="logoutButton">
+                退出
+            </button>
+        </div>
+
+    </div>
+
+
+    <div class="chat-main">
+
+        <div class="history-button-container">
+
+            <button class="history-button"
+                    id="historyButton">
+                加载更早的消息
+            </button>
+
+        </div>
+
+        <div class="chat-messages"
+             id="chatMessages">
+        </div>
+
+    </div>
+
+
+    <div class="chat-input-area">
+
+        <div class="chat-input-row">
+
+            <input class="chat-input"
+                   id="chatInput"
+                   maxlength="2000"
+                   placeholder="输入消息，按 Enter 发送">
+
+            <button class="send-button"
+                    id="sendButton">
+                发送
+            </button>
+
+        </div>
+
+        <div class="connection-status"
+             id="connectionStatus">
+            正在连接...
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+    let currentUser = null;
+    let socket = null;
+    let socketConnecting = false;
+    let oldestMessageId = null;
+    let loadingHistory = false;
+    let hasMoreHistory = true;
+    const loginContainer = document.getElementById("loginContainer");
+    const chatContainer = document.getElementById("chatContainer");
+    const loginForm =
+        document.getElementById("loginForm");
+    const loginButton =
+        document.getElementById("loginButton");
+    const loginMessage =
+        document.getElementById("loginMessage");
+    const chatMessages =
+        document.getElementById("chatMessages");
+    const chatInput =
+        document.getElementById("chatInput");
+    const sendButton =
+        document.getElementById("sendButton");
+    const historyButton =
+        document.getElementById("historyButton");
+    const connectionStatus =
+        document.getElementById("connectionStatus");
 
     function showLogin() {
-        loginForm.style.display = "block";
-        userPanel.style.display = "none";
+        loginContainer.style.display = "block";
+        chatContainer.style.display = "none";
+    }
+
+    function showChat() {
+        loginContainer.style.display = "none";
+        chatContainer.style.display = "flex";
+        document.getElementById("currentUsername").textContent =
+            currentUser.username;
     }
 
     async function checkLogin() {
         try {
-            const response = await fetch("/api/me");
-            const result = await response.json();
-
+            const response =
+                await fetch("/api/me");
+            const result =
+                await response.json();
             if (response.ok && result.success) {
-                showUser(result.data);
+                currentUser = result.data;
+                showChat();
+                await loadInitialMessages();
+                connectWebSocket();
+                chatInput.focus();
             } else {
                 showLogin();
             }
         } catch (error) {
-            message.textContent = "无法连接服务器";
+            loginMessage.textContent =
+                "无法连接服务器";
         }
     }
 
-    loginForm.addEventListener("submit", async function(event) {
-        event.preventDefault();
-
-        loginButton.disabled = true;
-        message.textContent = "";
-
-        try {
-            const response = await fetch("/api/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    username: document.getElementById("username").value,
-                    password: document.getElementById("password").value
-                })
-            });
-
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                showUser(result.data);
+    loginForm.addEventListener(
+        "submit",
+        async function (event) {
+            event.preventDefault();
+            loginButton.disabled = true;
+            loginMessage.textContent = "";
+            try {
+                const response =
+                    await fetch("/api/login", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            username:
+                            document.getElementById("username").value,
+                            password:
+                            document.getElementById("password").value
+                        })
+                    });
+                const result =
+                    await response.json();
+                if (!response.ok || !result.success) {
+                    loginMessage.textContent =
+                        result.message || "登录失败";
+                    return;
+                }
+                currentUser = result.data;
                 document.getElementById("password").value = "";
-            } else {
-                message.textContent = result.message || "登录失败";
+                showChat();
+                await loadInitialMessages();
+                connectWebSocket();
+                chatInput.focus();
+            } catch (error) {
+                loginMessage.textContent =
+                    "无法连接服务器";
+            } finally {
+                loginButton.disabled = false;
             }
-        } catch (error) {
-            message.textContent = "无法连接服务器";
-        } finally {
-            loginButton.disabled = false;
         }
-    });
+    );
 
-    document.getElementById("logoutButton").addEventListener("click", async function() {
+    async function loadInitialMessages() {
+        chatMessages.innerHTML = "";
+        oldestMessageId = null;
+        hasMoreHistory = true;
+        historyButton.disabled = false;
+        const response =
+            await fetch("/api/messages");
+        if (!response.ok) {
+            return;
+        }
+        const result =
+            await response.json();
+        const messages =
+            result.data.messages || [];
+        messages.forEach(message => {
+            appendMessage(message);
+        });
+        if (messages.length > 0) {
+            oldestMessageId =
+                messages[0].id;
+            scrollToBottom();
+        }
+        if (messages.length < 50) {
+            hasMoreHistory = false;
+            historyButton.disabled = true;
+        }
+    }
+
+    async function loadOlderMessages() {
+        if (loadingHistory ||
+            !hasMoreHistory ||
+            oldestMessageId === null) {
+            return;
+        }
+        loadingHistory = true;
+        historyButton.disabled = true;
+        const oldHeight =
+            chatMessages.scrollHeight;
+        const oldTop =
+            chatMessages.scrollTop;
         try {
-            await fetch("/api/logout", {
-                method: "POST"
+            const response =
+                await fetch(
+                    "/api/messages?before_id=" +
+                    encodeURIComponent(oldestMessageId)
+                );
+            if (!response.ok) {
+                return;
+            }
+            const result =
+                await response.json();
+            const messages =
+                result.data.messages || [];
+            if (messages.length === 0) {
+                hasMoreHistory = false;
+                return;
+            }
+            messages.forEach(message => {
+                prependMessage(message);
             });
+            oldestMessageId =
+                messages[0].id;
+            if (messages.length < 50) {
+                hasMoreHistory = false;
+            }
+            const newHeight =
+                chatMessages.scrollHeight;
+            chatMessages.scrollTop =
+                oldTop + (newHeight - oldHeight);
         } finally {
-            showLogin();
+            loadingHistory = false;
+            historyButton.disabled =
+                !hasMoreHistory;
         }
-    });
+    }
 
+    function appendMessage(message) {
+        const element =
+            createMessageElement(message);
+        chatMessages.appendChild(element);
+        if (message.id < (oldestMessageId || Number.MAX_SAFE_INTEGER)) {
+            oldestMessageId = message.id;
+        }
+    }
+
+    function prependMessage(message) {
+        const element =
+            createMessageElement(message);
+        chatMessages.insertBefore(
+            element,
+            chatMessages.firstChild
+        );
+    }
+
+    function createMessageElement(message) {
+        const wrapper =
+            document.createElement("div");
+        wrapper.className =
+            "chat-message";
+        if (currentUser &&
+            message.user_id === currentUser.id) {
+            wrapper.classList.add("mine");
+        }
+        const info =
+            document.createElement("div");
+        info.className =
+            "message-info";
+        const date =
+            new Date(message.created_at * 1000);
+        info.textContent =
+            message.username +
+            " · " +
+            date.toLocaleString();
+        const content =
+            document.createElement("div");
+        content.className =
+            "message-content";
+        content.textContent =
+            message.content;
+        wrapper.appendChild(info);
+        wrapper.appendChild(content);
+        return wrapper;
+    }
+
+    function connectWebSocket() {
+        if (!currentUser) {
+            return;
+        }
+        if (socket &&
+            (socket.readyState === WebSocket.OPEN ||
+             socket.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+        if (socketConnecting) {
+            return;
+        }
+        socketConnecting = true;
+        const protocol =
+            location.protocol === "https:"
+                ? "wss:"
+                : "ws:";
+        const url =
+            protocol +
+            "//" +
+            location.host +
+            "/ws/chat";
+        const newSocket = new WebSocket(url);
+        socket = newSocket;
+        newSocket.onopen = function () {
+            socketConnecting = false;
+            if (socket !== newSocket) {
+                newSocket.close();
+                return;
+            }
+            connectionStatus.textContent = "● 已连接";
+            connectionStatus.className =
+                "connection-status connected";
+        };
+        newSocket.onmessage = function (event) {
+            if (socket !== newSocket) {
+                return;
+            }
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === "message" &&
+                    data.message) {
+                    appendMessage(data.message);
+                    scrollToBottom();
+                }
+            } catch (error) {
+                console.error("消息解析失败", error);
+            }
+        };
+        newSocket.onclose = function () {
+            socketConnecting = false;
+            if (socket === newSocket) {
+                socket = null;
+                connectionStatus.textContent =
+                    "● 连接已断开";
+                connectionStatus.className =
+                    "connection-status disconnected";
+            }
+        };
+        newSocket.onerror = function () {
+            socketConnecting = false;
+            if (socket === newSocket) {
+                connectionStatus.textContent =
+                    "● 连接错误";
+                connectionStatus.className =
+                    "connection-status disconnected";
+            }
+        };
+    }
+
+    function sendMessage() {
+        const content =
+            chatInput.value.trim();
+        if (!content) {
+            return;
+        }
+        if (!socket ||
+            socket.readyState !== WebSocket.OPEN) {
+            connectionStatus.textContent =
+                "● WebSocket 未连接";
+            connectionStatus.className =
+                "connection-status disconnected";
+            return;
+        }
+        socket.send(
+            JSON.stringify({
+                type: "message",
+                content: content
+            })
+        );
+        chatInput.value = "";
+        chatInput.focus();
+    }
+
+    sendButton.addEventListener(
+        "click",
+        sendMessage
+    );
+    chatInput.addEventListener(
+        "keydown",
+        function (event) {
+            if (event.key === "Enter" &&
+                !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+    );
+    historyButton.addEventListener(
+        "click",
+        loadOlderMessages
+    );
+
+    function scrollToBottom() {
+        requestAnimationFrame(function () {
+            chatMessages.scrollTop =
+                chatMessages.scrollHeight;
+        });
+    }
+
+    document.getElementById("logoutButton")
+        .addEventListener(
+            "click",
+            async function () {
+                if (socket) {
+                    const oldSocket = socket;
+                    socket = null;
+                    oldSocket.close();
+                }
+                socketConnecting = false;
+                await fetch(
+                    "/api/logout",
+                    {
+                        method: "POST"
+                    }
+                );
+                currentUser = null;
+                chatMessages.innerHTML = "";
+                showLogin();
+            }
+        );
     checkLogin();
 </script>
+
 </body>
 </html>
