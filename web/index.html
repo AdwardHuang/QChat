@@ -1645,6 +1645,7 @@
     checkLogin();
 </script>
 
+
 <script>
     (function () {
         "use strict";
@@ -1660,7 +1661,11 @@
 
         const pendingAcks = new Map();
         const attachedSockets = new WeakSet();
+
         let requestCounter = 0;
+        let pendingFileSend = null;
+        let uploading = false;
+        let sendingPendingFile = false;
 
         // 文件选择按钮
         const fileButton = document.createElement("button");
@@ -1682,9 +1687,20 @@
         fileStatus.style.color = "#8490a0";
         fileStatus.textContent = "单个文件最大 20 MB";
 
+        // 手动重试按钮
+        const retryButton = document.createElement("button");
+        retryButton.type = "button";
+        retryButton.textContent = "重新发送";
+        retryButton.style.display = "none";
+        retryButton.style.marginTop = "6px";
+        retryButton.style.padding = "6px 14px";
+        retryButton.style.fontSize = "12px";
+        retryButton.style.background = "#e58b26";
+
         inputRow.insertBefore(fileButton, chatInputElement);
         chatInputArea.appendChild(fileInput);
         chatInputArea.appendChild(fileStatus);
+        chatInputArea.appendChild(retryButton);
 
         function setFileStatus(message, isError) {
             fileStatus.textContent = message;
@@ -1713,6 +1729,23 @@
             return "file-" + Date.now() + "-" + requestCounter;
         }
 
+        function updateFileControls() {
+            const busy = uploading || sendingPendingFile;
+            const hasPending = pendingFileSend !== null;
+
+            fileButton.disabled = busy || hasPending;
+            fileInput.disabled = busy || hasPending;
+
+            retryButton.style.display = hasPending ? "inline-block" : "none";
+            retryButton.disabled = busy || !hasPending;
+
+            if (sendingPendingFile) {
+                retryButton.textContent = "正在发送...";
+            } else {
+                retryButton.textContent = "重新发送";
+            }
+        }
+
         function finishPendingAck(requestId, error, ack) {
             const pending = pendingAcks.get(requestId);
 
@@ -1739,7 +1772,7 @@
             }
         }
 
-        // 监听服务端 ACK，不覆盖原有 WebSocket onmessage 处理。
+        // 监听服务端 ACK，不覆盖原有 WebSocket onmessage。
         function attachAckListener(ws) {
             if (!ws || attachedSockets.has(ws)) {
                 return;
@@ -1761,6 +1794,7 @@
                 }
 
                 const ack = data.file_message_ack;
+
                 if (!ack.request_id) {
                     return;
                 }
@@ -1777,7 +1811,7 @@
 
             ws.addEventListener("close", function () {
                 failAllPendingAcks(
-                    "WebSocket 已断开，无法确认文件消息是否发送成功。请先检查聊天记录，不要直接重复发送。"
+                    "WebSocket 已断开，无法确认发送结果。可以重新连接后点击重新发送。"
                 );
             });
         }
@@ -1791,7 +1825,8 @@
         };
 
         // 发送文件消息并等待服务端 ACK。
-        function sendUploadedFile(fileData, targetPeer) {
+        // requestId 必须由调用方提供，重试时不能重新生成。
+        function sendUploadedFile(fileData, targetPeer, requestId) {
             return new Promise(function (resolve, reject) {
                 if (!socket || socket.readyState !== WebSocket.OPEN) {
                     reject(new Error(
@@ -1801,8 +1836,6 @@
                 }
 
                 const ws = socket;
-                const requestId = createRequestId();
-
                 attachAckListener(ws);
 
                 const payload = {
@@ -1819,7 +1852,7 @@
                     finishPendingAck(
                         requestId,
                         new Error(
-                            "等待服务端确认超时，发送状态未知。请先检查聊天记录，不要直接重复发送。"
+                            "等待服务端确认超时，发送状态未知。可以点击重新发送，系统会复用原请求 ID。"
                         )
                     );
                 }, 20000);
@@ -1841,9 +1874,78 @@
             });
         }
 
+        // 执行发送或重试。
+        async function sendPendingFile() {
+            if (!pendingFileSend || sendingPendingFile) {
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                setFileStatus(
+                    "WebSocket 未连接，文件已上传，请重新连接后点击重新发送",
+                    true
+                );
+                return;
+            }
+
+            const pending = pendingFileSend;
+
+            sendingPendingFile = true;
+            updateFileControls();
+
+            setFileStatus(
+                "正在发送：" + pending.fileData.original_name,
+                false
+            );
+
+            try {
+                const ack = await sendUploadedFile(
+                    pending.fileData,
+                    pending.targetPeer,
+                    pending.requestId
+                );
+
+                // 只清理当前这次待发送任务。
+                if (pendingFileSend === pending) {
+                    pendingFileSend = null;
+                }
+
+                setFileStatus(
+                    "✓ 文件发送成功：" +
+                    pending.fileData.original_name +
+                    "（" + formatFileSize(pending.fileData.size) + "）" +
+                    "，消息 ID：" + ack.message_id,
+                    false
+                );
+
+            } catch (error) {
+                console.error("文件消息发送失败", error);
+
+                setFileStatus(
+                    (error.message || "文件发送失败") +
+                    "；可以点击下方按钮重试",
+                    true
+                );
+
+            } finally {
+                sendingPendingFile = false;
+                updateFileControls();
+            }
+        }
+
+        // 上传文件。
         async function uploadAndSendFile(file) {
             if (!currentUser) {
                 setFileStatus("请先登录", true);
+                return;
+            }
+
+            if (pendingFileSend) {
+                setFileStatus("当前有文件等待重试，请先完成当前文件发送", true);
+                return;
+            }
+
+            if (uploading) {
                 return;
             }
 
@@ -1857,18 +1959,16 @@
                 return;
             }
 
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                setFileStatus("WebSocket 未连接，请稍后重试", true);
-                return;
-            }
-
-            // 上传开始时固定发送目标，避免上传期间切换聊天对象导致发错人。
+            // 上传开始时固定发送目标。
             const targetPeer = activePeer
-                ? {id: Number(activePeer.id), username: activePeer.username}
+                ? {
+                    id: Number(activePeer.id),
+                    username: activePeer.username
+                }
                 : null;
 
-            fileButton.disabled = true;
-            fileInput.disabled = true;
+            uploading = true;
+            updateFileControls();
 
             setFileStatus("正在上传：" + file.name, false);
 
@@ -1899,25 +1999,29 @@
                     throw new Error("上传成功，但服务器没有返回文件 ID");
                 }
 
-                setFileStatus("上传完成，等待服务端确认...", false);
+                // 上传成功后保存完整待发送信息。
+                // 后续所有重试都复用这里的 fileData 和 requestId。
+                pendingFileSend = {
+                    fileData: fileData,
+                    targetPeer: targetPeer,
+                    requestId: createRequestId()
+                };
 
-                const ack = await sendUploadedFile(fileData, targetPeer);
-
-                setFileStatus(
-                    "✓ 文件发送成功：" +
-                    fileData.original_name +
-                    "（" + formatFileSize(fileData.size) + "）" +
-                    "，消息 ID：" + ack.message_id,
-                    false
-                );
+                setFileStatus("文件上传完成，正在发送消息...", false);
 
             } catch (error) {
-                console.error("文件发送失败", error);
-                setFileStatus(error.message || "文件发送失败", true);
+                console.error("文件上传失败", error);
+                setFileStatus(error.message || "文件上传失败", true);
+
             } finally {
-                fileButton.disabled = false;
-                fileInput.disabled = false;
+                uploading = false;
                 fileInput.value = "";
+                updateFileControls();
+            }
+
+            // 上传成功后再执行发送。
+            if (pendingFileSend) {
+                await sendPendingFile();
             }
         }
 
@@ -1931,6 +2035,10 @@
             if (file) {
                 uploadAndSendFile(file);
             }
+        });
+
+        retryButton.addEventListener("click", function () {
+            sendPendingFile();
         });
 
         // 保存原来的消息渲染方法。
@@ -2017,7 +2125,7 @@
             return wrapper;
         };
 
-        console.log("QChat 文件消息 ACK 功能已初始化");
+        console.log("QChat 文件消息手动重试功能已初始化");
     })();
 </script>
 
