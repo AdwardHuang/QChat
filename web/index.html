@@ -334,6 +334,215 @@
             color: #d44;
         }
 
+
+        /* 管理员用户管理 */
+        .admin-button {
+            padding: 7px 14px;
+            background: #2878e8;
+            color: white;
+        }
+
+        .admin-button:hover {
+            background: #1766d4;
+        }
+
+        .admin-mask {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(20, 30, 45, 0.48);
+        }
+
+        .admin-dialog {
+            width: 900px;
+            max-width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .admin-dialog-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e5e8ed;
+        }
+
+        .admin-dialog-title {
+            font-size: 17px;
+            font-weight: bold;
+        }
+
+        .admin-close-button {
+            padding: 6px 12px;
+            background: #f1f3f6;
+            color: #555;
+        }
+
+        .admin-dialog-body {
+            padding: 18px 20px;
+            overflow-y: auto;
+        }
+
+        .admin-create-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 10px;
+            align-items: end;
+            margin-bottom: 18px;
+            padding: 15px;
+            background: #f7f9fc;
+            border: 1px solid #e8edf4;
+            border-radius: 8px;
+        }
+
+        .admin-field label {
+            display: block;
+            margin-bottom: 6px;
+            color: #596579;
+            font-size: 12px;
+        }
+
+        .admin-field input {
+            height: 38px;
+        }
+
+        .admin-create-button {
+            height: 38px;
+            padding: 0 18px;
+            white-space: nowrap;
+        }
+
+        .admin-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: #687386;
+        }
+
+        .admin-refresh-button {
+            padding: 7px 12px;
+            background: #f1f3f6;
+            color: #555;
+        }
+
+        .admin-table-wrap {
+            overflow-x: auto;
+            border: 1px solid #e5e8ed;
+            border-radius: 8px;
+        }
+
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .admin-table th, .admin-table td {
+            padding: 11px 12px;
+            text-align: left;
+            border-bottom: 1px solid #edf0f4;
+        }
+
+        .admin-table th {
+            background: #f7f9fc;
+            color: #596579;
+            font-weight: 600;
+        }
+
+        .admin-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .admin-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
+        .admin-status.active {
+            background: #e8f7ee;
+            color: #21864a;
+        }
+
+        .admin-status.inactive {
+            background: #fff0f0;
+            color: #c33;
+        }
+
+        .admin-role {
+            color: #2878e8;
+        }
+
+        .admin-action-button {
+            margin-right: 5px;
+            padding: 5px 9px;
+            font-size: 12px;
+        }
+
+        .admin-action-button.secondary {
+            background: #eef2f7;
+            color: #465267;
+        }
+
+        .admin-action-button.danger {
+            background: #d94b4b;
+            color: white;
+        }
+
+        .admin-message {
+            min-height: 20px;
+            margin: 10px 0 0;
+            font-size: 13px;
+            color: #21864a;
+        }
+
+        .admin-message.error {
+            color: #d44;
+        }
+
+        .admin-empty {
+            padding: 24px;
+            text-align: center;
+            color: #8490a0;
+        }
+
+        @media (max-width: 700px) {
+            .admin-create-form {
+                grid-template-columns: 1fr;
+            }
+
+            .admin-create-button {
+                width: 100%;
+            }
+
+            .admin-mask {
+                padding: 8px;
+            }
+
+            .admin-dialog {
+                max-height: 96vh;
+            }
+
+            .admin-dialog-body {
+                padding: 12px;
+            }
+        }
+
         @media (max-width: 600px) {
             .chat-header {
                 padding: 0 12px;
@@ -402,6 +611,9 @@
 
         <div class="chat-user">
             <span id="currentUsername"></span>
+            <button class="admin-button" id="adminUsersButton" style="display:none" type="button">
+                用户管理
+            </button>
             <button class="logout-button" id="logoutButton">
                 退出
             </button>
@@ -458,6 +670,52 @@
 
 </div>
 
+<div class="admin-mask" id="adminMask">
+    <div class="admin-dialog">
+        <div class="admin-dialog-header">
+            <div class="admin-dialog-title">用户管理</div>
+            <button class="admin-close-button" id="adminCloseButton" type="button">关闭</button>
+        </div>
+        <div class="admin-dialog-body">
+            <form class="admin-create-form" id="adminCreateForm">
+                <div class="admin-field">
+                    <label for="adminNewUsername">新用户名（2–32 个字符）</label>
+                    <input id="adminNewUsername" maxlength="32" minlength="2" placeholder="输入用户名" required>
+                </div>
+                <div class="admin-field">
+                    <label for="adminNewPassword">初始密码（8–72 个字符）</label>
+                    <input id="adminNewPassword" type="password" minlength="8" maxlength="72" placeholder="输入初始密码" required>
+                </div>
+                <button class="admin-create-button" id="adminCreateButton" type="submit">创建用户</button>
+            </form>
+
+            <div class="admin-toolbar">
+                <span id="adminUserCount">用户列表</span>
+                <button class="admin-refresh-button" id="adminRefreshButton" type="button">刷新列表</button>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>用户名</th>
+                        <th>角色</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="adminUsersBody">
+                    <tr><td class="admin-empty" colspan="6">正在加载...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="admin-message" id="adminMessage"></div>
+        </div>
+    </div>
+</div>
+
 <script>
     let currentUser = null;
     let socket = null;
@@ -494,6 +752,14 @@
     const onlineUsersElement = document.getElementById("onlineUsers");
     const onlineCountElement = document.getElementById("onlineCount");
 
+    const adminUsersButton = document.getElementById("adminUsersButton");
+    const adminMask = document.getElementById("adminMask");
+    const adminUsersBody = document.getElementById("adminUsersBody");
+    const adminMessage = document.getElementById("adminMessage");
+    const adminUserCount = document.getElementById("adminUserCount");
+    const adminCreateForm = document.getElementById("adminCreateForm");
+    const adminCreateButton = document.getElementById("adminCreateButton");
+
     function showLogin() {
         loginContainer.style.display = "block";
         chatContainer.style.display = "none";
@@ -503,6 +769,7 @@
         loginContainer.style.display = "none";
         chatContainer.style.display = "flex";
         document.getElementById("currentUsername").textContent = currentUser.username;
+        adminUsersButton.style.display = currentUser.is_admin ? "inline-block" : "none";
     }
 
     function resetChatState() {
@@ -627,6 +894,220 @@
             console.error("查询私聊未读消息失败", error);
         }
     }
+
+
+    // 管理员用户管理
+    function setAdminMessage(message, isError) {
+        adminMessage.textContent = message || "";
+        adminMessage.className = isError ? "admin-message error" : "admin-message";
+    }
+
+    function formatAdminTime(timestamp) {
+        if (!timestamp) {
+            return "-";
+        }
+        const date = new Date(Number(timestamp) * 1000);
+        if (Number.isNaN(date.getTime())) {
+            return "-";
+        }
+        return date.toLocaleString();
+    }
+
+    async function adminRequest(url, options) {
+        const response = await fetch(url, options || {});
+        let result = {};
+        try {
+            result = await response.json();
+        } catch (error) {
+            throw new Error("服务器返回了无法识别的数据");
+        }
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || ("请求失败，HTTP " + response.status));
+        }
+        return result;
+    }
+
+    function openAdminPanel() {
+        if (!currentUser || !currentUser.is_admin) {
+            return;
+        }
+        adminMask.style.display = "flex";
+        setAdminMessage("", false);
+        loadAdminUsers();
+    }
+
+    function closeAdminPanel() {
+        adminMask.style.display = "none";
+    }
+
+    async function loadAdminUsers() {
+        if (!currentUser || !currentUser.is_admin) {
+            return;
+        }
+        adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">正在加载...</td></tr>';
+        setAdminMessage("", false);
+        try {
+            const result = await adminRequest("/api/admin/users");
+            const users = result.data && Array.isArray(result.data.users)
+                ? result.data.users
+                : (Array.isArray(result.data) ? result.data : []);
+            renderAdminUsers(users);
+        } catch (error) {
+            adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">加载失败</td></tr>';
+            adminUserCount.textContent = "用户列表";
+            setAdminMessage(error.message, true);
+        }
+    }
+
+    function renderAdminUsers(users) {
+        adminUsersBody.innerHTML = "";
+        adminUserCount.textContent = "共 " + users.length + " 个用户";
+        if (users.length === 0) {
+            adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">暂无用户</td></tr>';
+            return;
+        }
+
+        users.forEach(user => {
+            const row = document.createElement("tr");
+
+            const idCell = document.createElement("td");
+            idCell.textContent = user.id;
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = user.username;
+
+            const roleCell = document.createElement("td");
+            roleCell.textContent = user.is_admin ? "管理员" : "普通用户";
+            if (user.is_admin) {
+                roleCell.className = "admin-role";
+            }
+
+            const statusCell = document.createElement("td");
+            const status = document.createElement("span");
+            status.className = "admin-status " + (user.is_active ? "active" : "inactive");
+            status.textContent = user.is_active ? "已启用" : "已禁用";
+            statusCell.appendChild(status);
+
+            const createdCell = document.createElement("td");
+            createdCell.textContent = formatAdminTime(user.created_at);
+
+            const actionCell = document.createElement("td");
+            const resetButton = document.createElement("button");
+            resetButton.type = "button";
+            resetButton.className = "admin-action-button secondary";
+            resetButton.textContent = "重置密码";
+            resetButton.addEventListener("click", function () {
+                resetAdminUserPassword(user);
+            });
+            actionCell.appendChild(resetButton);
+
+            if (Number(user.id) !== Number(currentUser.id)) {
+                const statusButton = document.createElement("button");
+                statusButton.type = "button";
+                statusButton.className = "admin-action-button " + (user.is_active ? "danger" : "secondary");
+                statusButton.textContent = user.is_active ? "禁用" : "启用";
+                statusButton.addEventListener("click", function () {
+                    setAdminUserStatus(user, !user.is_active);
+                });
+                actionCell.appendChild(statusButton);
+            } else if (Number(user.id) === Number(currentUser.id)) {
+                const selfLabel = document.createElement("span");
+                selfLabel.textContent = "当前账号";
+                selfLabel.style.color = "#8490a0";
+                actionCell.appendChild(selfLabel);
+            }
+
+            row.appendChild(idCell);
+            row.appendChild(nameCell);
+            row.appendChild(roleCell);
+            row.appendChild(statusCell);
+            row.appendChild(createdCell);
+            row.appendChild(actionCell);
+            adminUsersBody.appendChild(row);
+        });
+    }
+
+    async function createAdminUser(event) {
+        event.preventDefault();
+        const username = document.getElementById("adminNewUsername").value.trim();
+        const password = document.getElementById("adminNewPassword").value;
+        if (username.length < 2 || username.length > 32) {
+            setAdminMessage("用户名长度必须为 2–32 个字符", true);
+            return;
+        }
+        if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
+            setAdminMessage("密码长度必须为 8–72 个字节", true);
+            return;
+        }
+
+        adminCreateButton.disabled = true;
+        try {
+            await adminRequest("/api/admin/users", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({username: username, password: password})
+            });
+            adminCreateForm.reset();
+            setAdminMessage("用户创建成功", false);
+            await loadAdminUsers();
+        } catch (error) {
+            setAdminMessage(error.message, true);
+        } finally {
+            adminCreateButton.disabled = false;
+        }
+    }
+
+    async function setAdminUserStatus(user, active) {
+        const action = active ? "启用" : "禁用";
+        if (!confirm("确定要" + action + "用户「" + user.username + "」吗？")) {
+            return;
+        }
+        try {
+            await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/status", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({is_active: active})
+            });
+            setAdminMessage("用户已" + action, false);
+            await loadAdminUsers();
+        } catch (error) {
+            setAdminMessage(error.message, true);
+        }
+    }
+
+    async function resetAdminUserPassword(user) {
+        const password = prompt("请输入用户「" + user.username + "」的新密码（8–72 个字符）：");
+        if (password === null) {
+            return;
+        }
+        if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
+            setAdminMessage("密码长度必须为 8–72 个字节", true);
+            return;
+        }
+        if (!confirm("确定重置用户「" + user.username + "」的密码吗？")) {
+            return;
+        }
+        try {
+            await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/password", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({password: password})
+            });
+            setAdminMessage("密码重置成功，该用户需要使用新密码重新登录", false);
+        } catch (error) {
+            setAdminMessage(error.message, true);
+        }
+    }
+
+    adminUsersButton.addEventListener("click", openAdminPanel);
+    document.getElementById("adminCloseButton").addEventListener("click", closeAdminPanel);
+    document.getElementById("adminRefreshButton").addEventListener("click", loadAdminUsers);
+    adminCreateForm.addEventListener("submit", createAdminUser);
+    adminMask.addEventListener("click", function (event) {
+        if (event.target === adminMask) {
+            closeAdminPanel();
+        }
+    });
 
     async function checkLogin() {
         try {
@@ -1151,6 +1632,8 @@
         }
 
         currentUser = null;
+        adminMask.style.display = "none";
+        adminUsersButton.style.display = "none";
         resetChatState();
 
         connectionStatus.textContent = "正在连接...";
