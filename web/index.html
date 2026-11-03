@@ -1653,9 +1653,10 @@
         const inputRow = document.querySelector(".chat-input-row");
         const chatInputElement = document.getElementById("chatInput");
         const chatInputArea = document.querySelector(".chat-input-area");
+        const chatContainer = document.getElementById("chatContainer");
 
-        if (!inputRow || !chatInputElement || !chatInputArea) {
-            console.error("文件消息初始化失败：找不到聊天输入区域");
+        if (!inputRow || !chatInputElement || !chatInputArea || !chatContainer) {
+            console.error("文件上传初始化失败：找不到聊天界面元素");
             return;
         }
 
@@ -1663,9 +1664,8 @@
         const attachedSockets = new WeakSet();
 
         let requestCounter = 0;
-        let pendingFileSend = null;
         let uploading = false;
-        let sendingPendingFile = false;
+        let dragCounter = 0;
 
         // 文件选择按钮
         const fileButton = document.createElement("button");
@@ -1673,11 +1673,12 @@
         fileButton.textContent = "文件";
         fileButton.style.width = "70px";
         fileButton.style.flexShrink = "0";
-        fileButton.title = "选择文件并发送";
+        fileButton.title = "选择文件上传";
 
-        // 隐藏的文件选择框
+        // 文件选择框，支持多选
         const fileInput = document.createElement("input");
         fileInput.type = "file";
+        fileInput.multiple = true;
         fileInput.style.display = "none";
 
         // 文件上传状态
@@ -1685,22 +1686,56 @@
         fileStatus.style.marginTop = "6px";
         fileStatus.style.fontSize = "12px";
         fileStatus.style.color = "#8490a0";
-        fileStatus.textContent = "单个文件最大 20 MB";
+        fileStatus.textContent = "支持拖拽文件到聊天窗口，单个文件最大 20 MB";
 
-        // 手动重试按钮
-        const retryButton = document.createElement("button");
-        retryButton.type = "button";
-        retryButton.textContent = "重新发送";
-        retryButton.style.display = "none";
-        retryButton.style.marginTop = "6px";
-        retryButton.style.padding = "6px 14px";
-        retryButton.style.fontSize = "12px";
-        retryButton.style.background = "#e58b26";
+        // 拖拽覆盖层
+        const dropOverlay = document.createElement("div");
+        dropOverlay.style.position = "absolute";
+        dropOverlay.style.inset = "0";
+        dropOverlay.style.zIndex = "50";
+        dropOverlay.style.display = "none";
+        dropOverlay.style.alignItems = "center";
+        dropOverlay.style.justifyContent = "center";
+        dropOverlay.style.background = "rgba(40, 120, 232, 0.12)";
+        dropOverlay.style.border = "3px dashed #2878e8";
+        dropOverlay.style.borderRadius = "10px";
+        dropOverlay.style.pointerEvents = "none";
+
+        const dropContent = document.createElement("div");
+        dropContent.style.padding = "35px 55px";
+        dropContent.style.borderRadius = "12px";
+        dropContent.style.background = "rgba(255,255,255,0.95)";
+        dropContent.style.color = "#2878e8";
+        dropContent.style.textAlign = "center";
+        dropContent.style.boxShadow = "0 4px 20px rgba(0,0,0,0.12)";
+
+        const dropIcon = document.createElement("div");
+        dropIcon.textContent = "📁";
+        dropIcon.style.fontSize = "48px";
+        dropIcon.style.marginBottom = "12px";
+
+        const dropTitle = document.createElement("div");
+        dropTitle.textContent = "释放鼠标即可上传文件";
+        dropTitle.style.fontSize = "20px";
+        dropTitle.style.fontWeight = "bold";
+
+        const dropSubtitle = document.createElement("div");
+        dropSubtitle.textContent = "支持一次拖入多个文件";
+        dropSubtitle.style.fontSize = "13px";
+        dropSubtitle.style.marginTop = "10px";
+        dropSubtitle.style.color = "#8490a0";
+
+        dropContent.appendChild(dropIcon);
+        dropContent.appendChild(dropTitle);
+        dropContent.appendChild(dropSubtitle);
+        dropOverlay.appendChild(dropContent);
+
+        chatContainer.style.position = "relative";
+        chatContainer.appendChild(dropOverlay);
 
         inputRow.insertBefore(fileButton, chatInputElement);
         chatInputArea.appendChild(fileInput);
         chatInputArea.appendChild(fileStatus);
-        chatInputArea.appendChild(retryButton);
 
         function setFileStatus(message, isError) {
             fileStatus.textContent = message;
@@ -1713,9 +1748,11 @@
             if (size < 1024) {
                 return size + " B";
             }
+
             if (size < 1024 * 1024) {
                 return (size / 1024).toFixed(1) + " KB";
             }
+
             return (size / 1024 / 1024).toFixed(2) + " MB";
         }
 
@@ -1727,23 +1764,6 @@
             }
 
             return "file-" + Date.now() + "-" + requestCounter;
-        }
-
-        function updateFileControls() {
-            const busy = uploading || sendingPendingFile;
-            const hasPending = pendingFileSend !== null;
-
-            fileButton.disabled = busy || hasPending;
-            fileInput.disabled = busy || hasPending;
-
-            retryButton.style.display = hasPending ? "inline-block" : "none";
-            retryButton.disabled = busy || !hasPending;
-
-            if (sendingPendingFile) {
-                retryButton.textContent = "正在发送...";
-            } else {
-                retryButton.textContent = "重新发送";
-            }
         }
 
         function finishPendingAck(requestId, error, ack) {
@@ -1765,14 +1785,11 @@
 
         function failAllPendingAcks(message) {
             for (const requestId of pendingAcks.keys()) {
-                finishPendingAck(
-                    requestId,
-                    new Error(message)
-                );
+                finishPendingAck(requestId, new Error(message));
             }
         }
 
-        // 监听服务端 ACK，不覆盖原有 WebSocket onmessage。
+        // 监听文件消息 ACK，不覆盖原来的 WebSocket onmessage。
         function attachAckListener(ws) {
             if (!ws || attachedSockets.has(ws)) {
                 return;
@@ -1810,33 +1827,22 @@
             });
 
             ws.addEventListener("close", function () {
-                failAllPendingAcks(
-                    "WebSocket 已断开，无法确认发送结果。可以重新连接后点击重新发送。"
-                );
+                failAllPendingAcks("WebSocket 已断开，文件消息发送失败");
             });
         }
 
-        // 包装原有连接函数，为新连接增加 ACK 监听。
-        const originalConnectWebSocket = connectWebSocket;
-
-        connectWebSocket = function () {
-            originalConnectWebSocket();
-            attachAckListener(socket);
-        };
-
-        // 发送文件消息并等待服务端 ACK。
-        // requestId 必须由调用方提供，重试时不能重新生成。
-        function sendUploadedFile(fileData, targetPeer, requestId) {
+        // 上传完成后通过 WebSocket 发送文件消息。
+        function sendUploadedFile(fileData, targetPeer) {
             return new Promise(function (resolve, reject) {
                 if (!socket || socket.readyState !== WebSocket.OPEN) {
-                    reject(new Error(
-                        "WebSocket 未连接，文件已经上传，但尚未发送到聊天"
-                    ));
+                    reject(new Error("WebSocket 未连接"));
                     return;
                 }
 
                 const ws = socket;
                 attachAckListener(ws);
+
+                const requestId = createRequestId();
 
                 const payload = {
                     type: targetPeer ? "private_file_message" : "file_message",
@@ -1851,9 +1857,7 @@
                 const timer = setTimeout(function () {
                     finishPendingAck(
                         requestId,
-                        new Error(
-                            "等待服务端确认超时，发送状态未知。可以点击重新发送，系统会复用原请求 ID。"
-                        )
+                        new Error("等待服务器确认超时，文件消息发送失败")
                     );
                 }, 20000);
 
@@ -1874,177 +1878,238 @@
             });
         }
 
-        // 执行发送或重试。
-        async function sendPendingFile() {
-            if (!pendingFileSend || sendingPendingFile) {
-                return;
+        // 上传单个文件并等待消息 ACK。
+        async function uploadAndSendFile(file, targetPeer) {
+            if (!currentUser) {
+                throw new Error("请先登录");
             }
 
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                setFileStatus(
-                    "WebSocket 未连接，文件已上传，请重新连接后点击重新发送",
-                    true
-                );
-                return;
+            if (file.size <= 0) {
+                throw new Error("不能发送空文件：" + file.name);
             }
 
-            const pending = pendingFileSend;
+            if (file.size > 20 * 1024 * 1024) {
+                throw new Error("文件超过 20 MB：" + file.name);
+            }
 
-            sendingPendingFile = true;
-            updateFileControls();
+            const formData = new FormData();
+            formData.append("file", file);
 
-            setFileStatus(
-                "正在发送：" + pending.fileData.original_name,
-                false
-            );
+            const response = await fetch("/api/files/upload", {
+                method: "POST",
+                body: formData
+            });
+
+            let result;
 
             try {
-                const ack = await sendUploadedFile(
-                    pending.fileData,
-                    pending.targetPeer,
-                    pending.requestId
-                );
-
-                // 只清理当前这次待发送任务。
-                if (pendingFileSend === pending) {
-                    pendingFileSend = null;
-                }
-
-                setFileStatus(
-                    "✓ 文件发送成功：" +
-                    pending.fileData.original_name +
-                    "（" + formatFileSize(pending.fileData.size) + "）" +
-                    "，消息 ID：" + ack.message_id,
-                    false
-                );
-
+                result = await response.json();
             } catch (error) {
-                console.error("文件消息发送失败", error);
-
-                setFileStatus(
-                    (error.message || "文件发送失败") +
-                    "；可以点击下方按钮重试",
-                    true
-                );
-
-            } finally {
-                sendingPendingFile = false;
-                updateFileControls();
+                throw new Error("服务器返回了无法识别的数据：" + file.name);
             }
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(result.message || "文件上传失败：" + file.name);
+            }
+
+            const fileData = result.data;
+
+            if (!fileData.id) {
+                throw new Error("上传成功，但服务器没有返回文件 ID：" + file.name);
+            }
+
+            const ack = await sendUploadedFile(fileData, targetPeer);
+
+            return ack;
         }
 
-        // 上传文件。
-        async function uploadAndSendFile(file) {
+        // 获取当前聊天对象的快照，避免上传期间切换窗口造成发错人。
+        function getCurrentTargetPeer() {
+            if (!activePeer) {
+                return null;
+            }
+
+            return {
+                id: Number(activePeer.id),
+                username: activePeer.username
+            };
+        }
+
+        // 按顺序处理文件队列，避免同时上传多个大文件。
+        async function uploadFiles(files) {
             if (!currentUser) {
                 setFileStatus("请先登录", true);
                 return;
             }
 
-            if (pendingFileSend) {
-                setFileStatus("当前有文件等待重试，请先完成当前文件发送", true);
-                return;
-            }
-
             if (uploading) {
+                setFileStatus("当前正在上传文件，请稍候", true);
                 return;
             }
 
-            if (file.size <= 0) {
-                setFileStatus("不能发送空文件", true);
+            const fileList = Array.from(files || []);
+
+            if (fileList.length === 0) {
                 return;
             }
 
-            if (file.size > 20 * 1024 * 1024) {
-                setFileStatus("文件超过 20 MB，无法上传", true);
-                return;
-            }
-
-            // 上传开始时固定发送目标。
-            const targetPeer = activePeer
-                ? {
-                    id: Number(activePeer.id),
-                    username: activePeer.username
-                }
-                : null;
-
+            const targetPeer = getCurrentTargetPeer();
             uploading = true;
-            updateFileControls();
+            fileButton.disabled = true;
+            fileInput.disabled = true;
 
-            setFileStatus("正在上传：" + file.name, false);
+            let successCount = 0;
+            let failedCount = 0;
 
             try {
-                const formData = new FormData();
-                formData.append("file", file);
+                for (let i = 0; i < fileList.length; i++) {
+                    const file = fileList[i];
 
-                const response = await fetch("/api/files/upload", {
-                    method: "POST",
-                    body: formData
-                });
+                    setFileStatus(
+                        "正在处理第 " + (i + 1) + "/" + fileList.length +
+                        " 个文件：" + file.name,
+                        false
+                    );
 
-                let result;
+                    try {
+                        const ack = await uploadAndSendFile(file, targetPeer);
+                        successCount++;
 
-                try {
-                    result = await response.json();
-                } catch (error) {
-                    throw new Error("服务器返回了无法识别的数据");
+                        setFileStatus(
+                            "✓ " + file.name +
+                            "（" + formatFileSize(file.size) + "）发送成功，消息 ID：" +
+                            ack.message_id,
+                            false
+                        );
+
+                    } catch (error) {
+                        failedCount++;
+                        console.error("文件发送失败：", file.name, error);
+
+                        setFileStatus(
+                            "✗ " + file.name + "：" + (error.message || "发送失败"),
+                            true
+                        );
+                    }
                 }
 
-                if (!response.ok || !result.success || !result.data) {
-                    throw new Error(result.message || "文件上传失败");
+                if (failedCount === 0) {
+                    setFileStatus(
+                        "全部完成：成功发送 " + successCount + " 个文件",
+                        false
+                    );
+                } else {
+                    setFileStatus(
+                        "处理完成：成功 " + successCount +
+                        " 个，失败 " + failedCount +
+                        " 个。失败的文件可以重新选择或拖入上传。",
+                        true
+                    );
                 }
-
-                const fileData = result.data;
-
-                if (!fileData.id) {
-                    throw new Error("上传成功，但服务器没有返回文件 ID");
-                }
-
-                // 上传成功后保存完整待发送信息。
-                // 后续所有重试都复用这里的 fileData 和 requestId。
-                pendingFileSend = {
-                    fileData: fileData,
-                    targetPeer: targetPeer,
-                    requestId: createRequestId()
-                };
-
-                setFileStatus("文件上传完成，正在发送消息...", false);
-
-            } catch (error) {
-                console.error("文件上传失败", error);
-                setFileStatus(error.message || "文件上传失败", true);
 
             } finally {
                 uploading = false;
+                fileButton.disabled = false;
+                fileInput.disabled = false;
                 fileInput.value = "";
-                updateFileControls();
-            }
-
-            // 上传成功后再执行发送。
-            if (pendingFileSend) {
-                await sendPendingFile();
             }
         }
 
+        // 文件选择按钮。
         fileButton.addEventListener("click", function () {
-            fileInput.click();
-        });
-
-        fileInput.addEventListener("change", function () {
-            const file = fileInput.files && fileInput.files[0];
-
-            if (file) {
-                uploadAndSendFile(file);
+            if (!uploading) {
+                fileInput.click();
             }
         });
 
-        retryButton.addEventListener("click", function () {
-            sendPendingFile();
+        fileInput.addEventListener("change", function () {
+            if (fileInput.files && fileInput.files.length > 0) {
+                uploadFiles(fileInput.files);
+            }
         });
 
-        // 保存原来的消息渲染方法。
+        // 判断拖拽内容是否包含文件。
+        function hasDraggedFiles(event) {
+            const types = event.dataTransfer && event.dataTransfer.types;
+
+            if (!types) {
+                return false;
+            }
+
+            return Array.from(types).includes("Files");
+        }
+
+        // 阻止浏览器默认打开拖入的文件。
+        document.addEventListener("dragover", function (event) {
+            if (hasDraggedFiles(event)) {
+                event.preventDefault();
+            }
+        });
+
+        document.addEventListener("drop", function (event) {
+            if (hasDraggedFiles(event)) {
+                event.preventDefault();
+            }
+        });
+
+        // 拖入聊天窗口。
+        chatContainer.addEventListener("dragenter", function (event) {
+            if (!hasDraggedFiles(event)) {
+                return;
+            }
+
+            event.preventDefault();
+            dragCounter++;
+            dropOverlay.style.display = "flex";
+        });
+
+        chatContainer.addEventListener("dragover", function (event) {
+            if (!hasDraggedFiles(event)) {
+                return;
+            }
+
+            event.preventDefault();
+
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = "copy";
+            }
+
+            dropOverlay.style.display = "flex";
+        });
+
+        chatContainer.addEventListener("dragleave", function (event) {
+            if (!hasDraggedFiles(event)) {
+                return;
+            }
+
+            event.preventDefault();
+            dragCounter--;
+
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                dropOverlay.style.display = "none";
+            }
+        });
+
+        chatContainer.addEventListener("drop", function (event) {
+            if (!hasDraggedFiles(event)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            dragCounter = 0;
+            dropOverlay.style.display = "none";
+
+            if (event.dataTransfer && event.dataTransfer.files.length > 0) {
+                uploadFiles(event.dataTransfer.files);
+            }
+        });
+
+        // 文件消息渲染。
         const originalCreateMessageElement = createMessageElement;
 
-        // 增强消息渲染：识别文件消息。
         createMessageElement = function (message, isPrivate) {
             let fileData = null;
 
@@ -2055,7 +2120,7 @@
                     fileData = parsed;
                 }
             } catch (error) {
-                // 普通文本消息，不需要处理。
+                // 普通文本消息。
             }
 
             if (!fileData) {
@@ -2125,9 +2190,10 @@
             return wrapper;
         };
 
-        console.log("QChat 文件消息手动重试功能已初始化");
+        console.log("QChat 文件拖拽上传功能已初始化");
     })();
 </script>
+
 
 </body>
 </html>
