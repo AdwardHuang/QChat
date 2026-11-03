@@ -38,15 +38,20 @@ func main() {
 	// 4. 创建 HTTP 服务
 	srv := server.New(store, cfg.SessionHours)
 
+	// 5. 接入文件上传和下载接口
+	handler := srv.WithFileUploads(srv.Handler(), "uploads")
+
 	log.Println("================================")
 	log.Println(" QChat Server Starting...")
 	log.Println(" Local: http://127.0.0.1" + cfg.ListenAddr)
 	log.Println(" Port :", cfg.ListenAddr)
 	log.Println("================================")
 	log.Println("管理员账号:", cfg.AdminUsername)
+	log.Println("文件上传目录: uploads")
+	log.Println("单文件上传限制: 20 MB")
 
-	// 5. 启动服务
-	if err := http.ListenAndServe(cfg.ListenAddr, srv.Handler()); err != nil {
+	// 6. 启动服务
+	if err := http.ListenAndServe(cfg.ListenAddr, handler); err != nil {
 		log.Fatal("服务启动失败: ", err)
 	}
 }
