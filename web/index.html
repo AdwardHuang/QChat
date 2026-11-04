@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <title>QChat - 局域网聊天室</title>
+    <title>QChat</title>
     <style>
         * {
             box-sizing: border-box;
@@ -580,7 +580,7 @@
     <h1>QChat</h1>
 
     <div class="subtitle">
-        轻量级局域网聊天室
+		😄 😊 😃 😀
     </div>
 
     <form id="loginForm">
@@ -1499,7 +1499,7 @@
                     renderOnlineUsers(data.users || [], data.count || 0);
                 } else if (data.type === "file_message_deleted") {
                     if (window.removeFileMessageFromChat) {
-                        window.removeFileMessageFromChat(data.scope, data.message_id);
+						window.removeFileMessageFromChat(data.scope, data.message_id, data);
                     }
                 } else if (data.type === "error") {
                     console.error("服务器消息错误：", data.error);
@@ -2540,21 +2540,40 @@
         });
         // ==================== 文件消息删除 ====================
 
-        window.removeFileMessageFromChat = function (scope, messageId) {
-            const messageKey = (scope === "private" ? "p-" : "m-") + messageId;
+		window.removeFileMessageFromChat = function (scope, messageId, eventData) {
+			const messageKey = (scope === "private" ? "p-" : "m-") + messageId;
 
-            renderedMessageIds.delete(messageKey);
+			renderedMessageIds.delete(messageKey);
 
-            const elements = chatMessages.querySelectorAll(".chat-message");
+			const elements = chatMessages.querySelectorAll(".chat-message");
 
-            elements.forEach(function (element) {
-                if (element.dataset.messageId === String(messageId) &&
-                    element.dataset.messageScope === scope) {
-                    element.remove();
-                }
-            });
-        };
+			elements.forEach(function (element) {
+				if (element.dataset.messageId === String(messageId) &&
+						element.dataset.messageScope === scope) {
+					element.remove();
+				}
+			});
 
+			// 私聊文件消息被删除，如果当前用户是接收者，
+			// 则重新从服务端查询该私聊对象的未读数量。
+			if (scope === "private" &&
+					eventData &&
+					currentUser &&
+					Number(eventData.receiver_id) === Number(currentUser.id)) {
+
+				const peerId = Number(eventData.sender_id);
+
+				if (peerId > 0) {
+					unreadVersions.set(
+							peerId,
+							(unreadVersions.get(peerId) || 0) + 1
+					);
+
+					loadUnreadCount(peerId);
+				}
+			}
+		};
+		
         async function deleteFileMessage(message, isPrivate, button) {
             const scope = isPrivate ? "private" : "public";
             const messageId = Number(message.id);
@@ -2580,7 +2599,7 @@
                     throw new Error(result.message || "删除文件消息失败");
                 }
 
-                window.removeFileMessageFromChat(scope, messageId);
+				window.removeFileMessageFromChat(scope, messageId, result.data);
             } catch (error) {
                 alert(error.message || "删除文件消息失败");
                 button.disabled = false;

@@ -16,9 +16,11 @@ import (
 
 // FileMessageDeletedEvent 是文件消息删除通知。
 type FileMessageDeletedEvent struct {
-	Type      string `json:"type"`
-	Scope     string `json:"scope"`
-	MessageID int64  `json:"message_id"`
+	Type       string `json:"type"`
+	Scope      string `json:"scope"`
+	MessageID  int64  `json:"message_id"`
+	SenderID   int64  `json:"sender_id,omitempty"`
+	ReceiverID int64  `json:"receiver_id,omitempty"`
 }
 
 // BroadcastFileMessageDeleted 广播文件消息删除事件。
@@ -28,9 +30,11 @@ func (h *ChatHub) BroadcastFileMessageDeleted(message *database.DeletedFileMessa
 	}
 
 	data, err := json.Marshal(FileMessageDeletedEvent{
-		Type:      "file_message_deleted",
-		Scope:     message.Scope,
-		MessageID: message.MessageID,
+		Type:       "file_message_deleted",
+		Scope:      message.Scope,
+		MessageID:  message.MessageID,
+		SenderID:   message.SenderID,
+		ReceiverID: message.ReceiverID,
 	})
 	if err != nil {
 		log.Println("文件消息删除通知序列化失败:", err)
@@ -161,8 +165,10 @@ func (s *Server) handleFileMessageDelete(w http.ResponseWriter, r *http.Request,
 		Success: true,
 		Message: "文件消息删除成功",
 		Data: map[string]any{
-			"scope":      result.Scope,
-			"message_id": result.MessageID,
+			"scope":       result.Scope,
+			"message_id":  result.MessageID,
+			"sender_id":   result.SenderID,
+			"receiver_id": result.ReceiverID,
 		},
 	})
 }
