@@ -1664,9 +1664,11 @@
 				return;
 			}
 
-			const MAX_FILE_SIZE = 20 * 1024 * 1024;
-			const ACK_TIMEOUT = 20000;
+			// ==================== 配置 ====================
 
+			let maxFileSizeMB = 0;
+
+			const ACK_TIMEOUT = 20000;
 			const pendingAcks = new Map();
 			const attachedSockets = new WeakSet();
 
@@ -1746,8 +1748,7 @@
 			});
 
 			document.addEventListener("keydown", function (event) {
-				if (event.key === "Escape" &&
-						imagePreviewMask.style.display === "flex") {
+				if (event.key === "Escape" && imagePreviewMask.style.display === "flex") {
 					closeImagePreview();
 				}
 			});
@@ -1760,17 +1761,19 @@
 			fileButton.style.width = "70px";
 			fileButton.style.flexShrink = "0";
 			fileButton.title = "选择文件上传";
+			fileButton.disabled = true;
 
 			const fileInput = document.createElement("input");
 			fileInput.type = "file";
 			fileInput.multiple = true;
 			fileInput.style.display = "none";
+			fileInput.disabled = true;
 
 			const fileStatus = document.createElement("div");
 			fileStatus.style.marginTop = "6px";
 			fileStatus.style.fontSize = "12px";
 			fileStatus.style.color = "#8490a0";
-			fileStatus.textContent = "支持拖拽文件到聊天窗口，单个文件最大 20 MB";
+			fileStatus.textContent = "正在读取服务器上传限制...";
 
 			const queuePanel = document.createElement("div");
 			queuePanel.style.display = "none";
@@ -1796,13 +1799,11 @@
 			const queueProgress = document.createElement("span");
 			queueProgress.style.color = "#2878e8";
 
-			// 上传进度面板右侧区域
 			const queueHeaderRight = document.createElement("div");
 			queueHeaderRight.style.display = "flex";
 			queueHeaderRight.style.alignItems = "center";
 			queueHeaderRight.style.gap = "10px";
 
-			// 关闭叉号
 			const queueCloseButton = document.createElement("button");
 			queueCloseButton.type = "button";
 			queueCloseButton.textContent = "×";
@@ -1837,7 +1838,6 @@
 
 			queueHeaderRight.appendChild(queueProgress);
 			queueHeaderRight.appendChild(queueCloseButton);
-
 			queueHeader.appendChild(queueTitle);
 			queueHeader.appendChild(queueHeaderRight);
 
@@ -1936,6 +1936,50 @@
 				fileStatus.style.color = isError ? "#d44" : "#8490a0";
 			}
 
+			// ==================== 读取服务器上传配置 ====================
+
+			async function loadUploadConfig() {
+				try {
+					const response = await fetch("/api/files/config", {
+						method: "GET",
+						cache: "no-store"
+					});
+
+					const result = await response.json();
+
+					if (!response.ok || !result.success || !result.data) {
+						throw new Error(result.message || "读取上传配置失败");
+					}
+
+					const limitMB = Number(result.data.max_upload_size_mb);
+
+					if (!Number.isSafeInteger(limitMB) || limitMB <= 0) {
+						throw new Error("服务器返回的上传限制无效");
+					}
+
+					maxFileSizeMB = limitMB;
+
+					setFileStatus(
+							"支持拖拽文件到聊天窗口，单个文件最大 " + maxFileSizeMB + " MB",
+							false
+					);
+
+					fileButton.disabled = false;
+					fileInput.disabled = false;
+
+					console.log("服务器单文件上传限制：" + maxFileSizeMB + " MB");
+				} catch (error) {
+					maxFileSizeMB = 0;
+
+					setFileStatus("读取服务器上传限制失败，暂时无法上传文件", true);
+
+					fileButton.disabled = true;
+					fileInput.disabled = true;
+
+					console.error("读取上传配置失败：", error);
+				}
+			}
+
 			function createRequestId() {
 				requestCounter++;
 
@@ -2019,9 +2063,10 @@
 				tasks.forEach(function (task) {
 					totalBytes += task.file.size;
 
-					completedBytes += task.state === "success" || task.state === "sending"
-							? task.file.size
-							: task.loaded;
+					completedBytes +=
+							task.state === "success" || task.state === "sending"
+									? task.file.size
+									: task.loaded;
 
 					if (task.state === "success") {
 						completedCount++;
@@ -2122,7 +2167,6 @@
 					}
 
 					bottom.appendChild(action);
-
 					item.appendChild(top);
 					item.appendChild(bottom);
 
@@ -2139,10 +2183,7 @@
 					taskList.appendChild(item);
 				});
 
-				const percent = totalBytes > 0
-						? completedBytes / totalBytes * 100
-						: 0;
-
+				const percent = totalBytes > 0 ? completedBytes / totalBytes * 100 : 0;
 				overallBar.style.width = formatPercent(percent);
 
 				queueProgress.textContent =
@@ -2366,8 +2407,12 @@
 					throw new Error("不能发送空文件");
 				}
 
-				if (task.file.size > MAX_FILE_SIZE) {
-					throw new Error("文件超过 20 MB");
+				if (maxFileSizeMB <= 0) {
+					throw new Error("尚未获取服务器上传限制");
+				}
+
+				if (task.file.size > maxFileSizeMB * 1024 * 1024) {
+					throw new Error("文件超过 " + maxFileSizeMB + " MB");
 				}
 
 				const fileData = await uploadFile(task);
@@ -2442,8 +2487,8 @@
 					}
 				} finally {
 					processingQueue = false;
-					fileButton.disabled = false;
-					fileInput.disabled = false;
+					fileButton.disabled = maxFileSizeMB <= 0;
+					fileInput.disabled = maxFileSizeMB <= 0;
 
 					const successCount = tasks.filter(
 							task => task.state === "success"
@@ -2479,6 +2524,11 @@
 				const fileList = Array.from(files || []);
 
 				if (fileList.length === 0) {
+					return;
+				}
+
+				if (maxFileSizeMB <= 0) {
+					setFileStatus("尚未获取服务器上传限制，请稍后再试", true);
 					return;
 				}
 
@@ -2825,12 +2875,15 @@
 				}
 
 				card.appendChild(details);
-
 				wrapper.appendChild(info);
 				wrapper.appendChild(card);
 
 				return wrapper;
 			};
+
+			// ==================== 初始化 ====================
+
+			loadUploadConfig();
 
 			console.log("QChat 0.8 文件上传及图片预览初始化完成");
 		})();

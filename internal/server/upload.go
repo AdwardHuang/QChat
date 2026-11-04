@@ -18,13 +18,10 @@ import (
 	"qchat/internal/database"
 )
 
-const (
-	maxUploadSize        int64 = 20 << 20
-	maxMultipartOverhead int64 = 1 << 20
-)
+const maxMultipartOverhead int64 = 1 << 20
 
 // WithFileUploads 在现有 HTTP Handler 外层增加文件上传和下载接口。
-func (s *Server) WithFileUploads(next http.Handler, uploadDir string) http.Handler {
+func (s *Server) WithFileUploads(next http.Handler, uploadDir string, maxUploadSize int64) http.Handler {
 	uploadDir = strings.TrimSpace(uploadDir)
 	if uploadDir == "" {
 		uploadDir = "uploads"
@@ -32,8 +29,11 @@ func (s *Server) WithFileUploads(next http.Handler, uploadDir string) http.Handl
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/api/files/config":
+			handleFileConfig(w, r, maxUploadSize)
+
 		case r.URL.Path == "/api/files/upload":
-			s.handleFileUpload(w, r, uploadDir)
+			s.handleFileUpload(w, r, uploadDir, maxUploadSize)
 
 		case strings.HasPrefix(r.URL.Path, "/api/files/messages/"):
 			s.handleFileMessageDelete(w, r, uploadDir)
@@ -47,7 +47,27 @@ func (s *Server) WithFileUploads(next http.Handler, uploadDir string) http.Handl
 	})
 }
 
-func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, uploadDir string) {
+// handleFileConfig 返回服务器文件上传配置。
+func handleFileConfig(w http.ResponseWriter, r *http.Request, maxUploadSize int64) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{
+			Success: false,
+			Message: "仅支持 GET 请求",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, APIResponse{
+		Success: true,
+		Message: "查询成功",
+		Data: map[string]any{
+			"max_upload_size_mb": maxUploadSize >> 20,
+		},
+	})
+}
+
+func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, uploadDir string, maxUploadSize int64) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{
@@ -63,13 +83,16 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, upload
 		return
 	}
 
+	maxUploadMessage := fmt.Sprintf("单个文件最大 %d MB", maxUploadSize>>20)
+
+	// 限制整个 multipart 请求体大小，额外预留 1 MiB 的封装空间。
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize+maxMultipartOverhead)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			writeJSON(w, http.StatusRequestEntityTooLarge, APIResponse{
 				Success: false,
-				Message: "上传请求过大，单个文件最大 20 MB",
+				Message: "上传请求过大，" + maxUploadMessage,
 			})
 			return
 		}
@@ -110,7 +133,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, upload
 	if header.Size > maxUploadSize {
 		writeJSON(w, http.StatusRequestEntityTooLarge, APIResponse{
 			Success: false,
-			Message: "单个文件最大 20 MB",
+			Message: maxUploadMessage,
 		})
 		return
 	}
@@ -135,6 +158,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, upload
 	tempPath := tempFile.Name()
 	defer os.Remove(tempPath)
 
+	// 最多读取限制值 + 1 字节，以便识别实际超限。
 	written, copyErr := io.Copy(tempFile, io.LimitReader(src, maxUploadSize+1))
 	closeErr := tempFile.Close()
 
@@ -149,7 +173,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, upload
 	if written > maxUploadSize {
 		writeJSON(w, http.StatusRequestEntityTooLarge, APIResponse{
 			Success: false,
-			Message: "单个文件最大 20 MB",
+			Message: maxUploadMessage,
 		})
 		return
 	}
@@ -329,6 +353,7 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request, uplo
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, no-store")
+
 	disposition := "attachment"
 
 	if r.URL.Query().Get("inline") == "1" {
