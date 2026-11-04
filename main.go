@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 
 	"qchat/internal/auth"
 	"qchat/internal/config"
@@ -52,7 +51,7 @@ func main() {
 	log.Printf("单文件上传限制: %d MB", cfg.MaxUploadSizeMB)
 
 	// 6. 启动服务
-	if err := http.ListenAndServe(cfg.ListenAddr, handler); err != nil {
-		log.Fatal("服务启动失败: ", err)
+	if err := runServer(cfg.ListenAddr, handler); err != nil {
+		log.Println("QChat 服务已停止:", err)
 	}
 }
