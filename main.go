@@ -39,7 +39,8 @@ func main() {
 	srv := server.New(store, cfg.SessionHours)
 
 	// 5. 接入文件上传和下载接口
-	handler := srv.WithFileUploads(srv.Handler(), "uploads")
+	maxUploadSize := cfg.MaxUploadSizeBytes()
+	handler := srv.WithFileUploads(srv.Handler(), "uploads", maxUploadSize)
 
 	log.Println("================================")
 	log.Println(" QChat Server Starting...")
@@ -48,7 +49,7 @@ func main() {
 	log.Println("================================")
 	log.Println("管理员账号:", cfg.AdminUsername)
 	log.Println("文件上传目录: uploads")
-	log.Println("单文件上传限制: 20 MB")
+	log.Printf("单文件上传限制: %d MB", cfg.MaxUploadSizeMB)
 
 	// 6. 启动服务
 	if err := http.ListenAndServe(cfg.ListenAddr, handler); err != nil {

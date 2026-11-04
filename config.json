@@ -3,5 +3,6 @@
   "database_path": "data/qchat.db",
   "session_hours": 24,
   "admin_username": "admin",
-  "admin_password": "QChat_Admin_2026!"
+  "admin_password": "QChat_Admin_2026!",
+  "max_upload_size_mb": 20
 }

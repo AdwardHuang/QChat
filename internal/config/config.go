@@ -7,12 +7,15 @@ import (
 	"strings"
 )
 
+const maxUploadSizeMB int64 = ((1<<63 - 1) - (1 << 20)) / (1 << 20)
+
 type Config struct {
-	ListenAddr    string `json:"listen_addr"`
-	DatabasePath  string `json:"database_path"`
-	SessionHours  int    `json:"session_hours"`
-	AdminUsername string `json:"admin_username"`
-	AdminPassword string `json:"admin_password"`
+	ListenAddr      string `json:"listen_addr"`
+	DatabasePath    string `json:"database_path"`
+	SessionHours    int    `json:"session_hours"`
+	AdminUsername   string `json:"admin_username"`
+	AdminPassword   string `json:"admin_password"`
+	MaxUploadSizeMB int64  `json:"max_upload_size_mb"`
 }
 
 func Load(path string) (*Config, error) {
@@ -45,6 +48,16 @@ func Load(path string) (*Config, error) {
 	if len(cfg.AdminPassword) < 12 {
 		return nil, fmt.Errorf("admin_password 至少需要 12 个字符")
 	}
+	if cfg.MaxUploadSizeMB <= 0 {
+		return nil, fmt.Errorf("max_upload_size_mb 必须大于 0")
+	}
+	if cfg.MaxUploadSizeMB > maxUploadSizeMB {
+		return nil, fmt.Errorf("max_upload_size_mb 设置过大")
+	}
 
 	return &cfg, nil
+}
+
+func (c *Config) MaxUploadSizeBytes() int64 {
+	return c.MaxUploadSizeMB * (1 << 20)
 }
