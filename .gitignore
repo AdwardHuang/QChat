@@ -4,3 +4,4 @@ qchat.exe
 /uploads/
 /data/qchat.db-shm
 /data/qchat.db-wal
+/qchat-startup.log

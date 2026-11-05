@@ -1,2743 +1,1439 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <title>QChat</title>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        html, body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            font-family: "Microsoft YaHei", Arial, sans-serif;
-            background: #f3f5f9;
-            color: #303846;
-        }
-
-        .login-container {
-            width: 400px;
-            max-width: calc(100% - 32px);
-            padding: 36px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        .login-container h1 {
-            margin: 0;
-            text-align: center;
-            color: #2878e8;
-        }
-
-        .subtitle {
-            margin: 12px 0 30px;
-            text-align: center;
-            color: #8490a0;
-            font-size: 14px;
-        }
-
-        .form-item {
-            margin-bottom: 18px;
-        }
-
-        .form-item label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
-        input {
-            width: 100%;
-            height: 42px;
-            padding: 0 12px;
-            border: 1px solid #dce1e8;
-            border-radius: 6px;
-            outline: none;
-            font-size: 14px;
-        }
-
-        input:focus {
-            border-color: #2878e8;
-        }
-
-        button {
-            border: none;
-            border-radius: 6px;
-            background: #2878e8;
-            color: white;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #1766d4;
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .login-button {
-            width: 100%;
-            height: 44px;
-            font-size: 15px;
-        }
-
-        .message-error {
-            min-height: 20px;
-            margin-top: 14px;
-            text-align: center;
-            color: #d44;
-            font-size: 13px;
-        }
-
-        .chat-container {
-            display: none;
-            width: 100%;
-            height: 100%;
-            flex-direction: column;
-        }
-
-        .chat-header {
-            height: 60px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            background: white;
-            border-bottom: 1px solid #e5e8ed;
-        }
-
-        .chat-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2878e8;
-        }
-
-        .chat-user {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 14px;
-        }
-
-        .logout-button {
-            padding: 7px 14px;
-            background: #f1f3f6;
-            color: #555;
-        }
-
-        .logout-button:hover {
-            background: #e5e8ed;
-        }
-
-        .chat-main {
-            flex: 1;
-            min-height: 0;
-            display: flex;
-            flex-direction: row;
-        }
-
-        /* 在线用户侧边栏 */
-        .online-panel {
-            width: 220px;
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            background: white;
-            border-right: 1px solid #e5e8ed;
-            overflow-y: auto;
-        }
-
-        .online-header {
-            height: 48px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 15px;
-            border-bottom: 1px solid #f0f1f3;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .online-count {
-            color: #8490a0;
-            font-size: 12px;
-            font-weight: normal;
-        }
-
-        .conversation-item, .online-user {
-            display: flex;
-            align-items: center;
-            gap: 9px;
-            padding: 11px 15px;
-            font-size: 13px;
-            border-bottom: 1px solid #f0f1f3;
-            cursor: pointer;
-        }
-
-        .conversation-item:hover, .online-user:hover {
-            background: #f5f7fa;
-        }
-
-        .conversation-item.active, .online-user.active {
-            background: #eaf2ff;
-        }
-
-        .online-dot {
-            width: 8px;
-            height: 8px;
-            flex-shrink: 0;
-            border-radius: 50%;
-            background: #28b56a;
-        }
-
-        .online-username {
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .online-me {
-            color: #2878e8;
-            font-size: 11px;
-        }
-
-        .unread-badge {
-            min-width: 18px;
-            height: 18px;
-            padding: 0 5px;
-            border-radius: 9px;
-            background: #e5484d;
-            color: white;
-            font-size: 11px;
-            line-height: 18px;
-            text-align: center;
-        }
-
-        /* 右侧聊天内容 */
-        .chat-content {
-            flex: 1;
-            min-width: 0;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .history-button-container {
-            padding: 10px;
-            text-align: center;
-        }
-
-        .history-button {
-            padding: 7px 14px;
-            background: #f1f3f6;
-            color: #555;
-            font-size: 12px;
-        }
-
-        .history-button:hover {
-            background: #e5e8ed;
-        }
-
-        .history-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .chat-messages {
-            flex: 1;
-            min-height: 0;
-            overflow-y: auto;
-            padding: 10px 20px 20px;
-        }
-
-        .chat-message {
-            margin-bottom: 16px;
-        }
-
-        .message-info {
-            margin-bottom: 4px;
-            color: #8b94a1;
-            font-size: 12px;
-        }
-
-        .message-content {
-            display: inline-block;
-            max-width: min(700px, 80%);
-            padding: 10px 13px;
-            border-radius: 8px;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        .chat-message.mine .message-info {
-            text-align: right;
-        }
-
-        .chat-message.mine {
-            text-align: right;
-        }
-
-        .chat-message.mine .message-content {
-            background: #2878e8;
-            color: white;
-            text-align: left;
-        }
-
-        .chat-input-area {
-            padding: 12px;
-            background: white;
-            border-top: 1px solid #e5e8ed;
-        }
-
-        .chat-input-row {
-            display: flex;
-            gap: 10px;
-        }
-
-        .chat-input {
-            flex: 1;
-            height: 42px;
-        }
-
-        .send-button {
-            width: 80px;
-        }
-
-        .connection-status {
-            margin-top: 6px;
-            color: #8490a0;
-            font-size: 12px;
-        }
-
-        .connection-status.connected {
-            color: #21864a;
-        }
-
-        .connection-status.disconnected {
-            color: #d44;
-        }
-
-
-        /* 管理员用户管理 */
-        .admin-button {
-            padding: 7px 14px;
-            background: #2878e8;
-            color: white;
-        }
-
-        .admin-button:hover {
-            background: #1766d4;
-        }
-
-        .admin-mask {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            background: rgba(20, 30, 45, 0.48);
-        }
-
-        .admin-dialog {
-            width: 900px;
-            max-width: 100%;
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
-        }
-
-        .admin-dialog-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e8ed;
-        }
-
-        .admin-dialog-title {
-            font-size: 17px;
-            font-weight: bold;
-        }
-
-        .admin-close-button {
-            padding: 6px 12px;
-            background: #f1f3f6;
-            color: #555;
-        }
-
-        .admin-dialog-body {
-            padding: 18px 20px;
-            overflow-y: auto;
-        }
-
-        .admin-create-form {
-            display: grid;
-            grid-template-columns: 1fr 1fr auto;
-            gap: 10px;
-            align-items: end;
-            margin-bottom: 18px;
-            padding: 15px;
-            background: #f7f9fc;
-            border: 1px solid #e8edf4;
-            border-radius: 8px;
-        }
-
-        .admin-field label {
-            display: block;
-            margin-bottom: 6px;
-            color: #596579;
-            font-size: 12px;
-        }
-
-        .admin-field input {
-            height: 38px;
-        }
-
-        .admin-create-button {
-            height: 38px;
-            padding: 0 18px;
-            white-space: nowrap;
-        }
-
-        .admin-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 10px;
-            font-size: 13px;
-            color: #687386;
-        }
-
-        .admin-refresh-button {
-            padding: 7px 12px;
-            background: #f1f3f6;
-            color: #555;
-        }
-
-        .admin-table-wrap {
-            overflow-x: auto;
-            border: 1px solid #e5e8ed;
-            border-radius: 8px;
-        }
-
-        .admin-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-            white-space: nowrap;
-        }
-
-        .admin-table th, .admin-table td {
-            padding: 11px 12px;
-            text-align: left;
-            border-bottom: 1px solid #edf0f4;
-        }
-
-        .admin-table th {
-            background: #f7f9fc;
-            color: #596579;
-            font-weight: 600;
-        }
-
-        .admin-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .admin-status {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-        }
-
-        .admin-status.active {
-            background: #e8f7ee;
-            color: #21864a;
-        }
-
-        .admin-status.inactive {
-            background: #fff0f0;
-            color: #c33;
-        }
-
-        .admin-role {
-            color: #2878e8;
-        }
-
-        .admin-action-button {
-            margin-right: 5px;
-            padding: 5px 9px;
-            font-size: 12px;
-        }
-
-        .admin-action-button.secondary {
-            background: #eef2f7;
-            color: #465267;
-        }
-
-        .admin-action-button.danger {
-            background: #d94b4b;
-            color: white;
-        }
-
-        .admin-message {
-            min-height: 20px;
-            margin: 10px 0 0;
-            font-size: 13px;
-            color: #21864a;
-        }
-
-        .admin-message.error {
-            color: #d44;
-        }
-
-        .admin-empty {
-            padding: 24px;
-            text-align: center;
-            color: #8490a0;
-        }
-
-        @media (max-width: 700px) {
-            .admin-create-form {
-                grid-template-columns: 1fr;
-            }
-
-            .admin-create-button {
-                width: 100%;
-            }
-
-            .admin-mask {
-                padding: 8px;
-            }
-
-            .admin-dialog {
-                max-height: 96vh;
-            }
-
-            .admin-dialog-body {
-                padding: 12px;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .chat-header {
-                padding: 0 12px;
-            }
-
-            .online-panel {
-                width: 130px;
-            }
-
-            .online-header {
-                padding: 0 8px;
-                font-size: 12px;
-            }
-
-            .online-user, .conversation-item {
-                gap: 5px;
-                padding: 10px 7px;
-                font-size: 12px;
-            }
-
-            .chat-messages {
-                padding-left: 10px;
-                padding-right: 10px;
-            }
-
-            .message-content {
-                max-width: 90%;
-            }
-        }
-    </style>
-</head>
-
-<body>
-<div class="login-container" id="loginContainer">
-    <h1>QChat</h1>
-
-    <div class="subtitle">
-		😄 😊 😃 😀
-    </div>
-
-    <form id="loginForm">
-        <div class="form-item">
-            <label for="username">用户名</label>
-            <input autocomplete="username" id="username" required>
-        </div>
-
-        <div class="form-item">
-            <label for="password">密码</label>
-            <input autocomplete="current-password" id="password" required type="password">
-        </div>
-
-        <button class="login-button" id="loginButton" type="submit">
-            登 录
-        </button>
-
-        <div class="message-error" id="loginMessage"></div>
-    </form>
-</div>
-
-<div class="chat-container" id="chatContainer">
-
-    <div class="chat-header">
-        <div class="chat-title" id="chatTitle">
-            QChat · 公共聊天室
-        </div>
-
-        <div class="chat-user">
-            <span id="currentUsername"></span>
-            <button class="admin-button" id="adminUsersButton" style="display:none" type="button">
-                用户管理
-            </button>
-            <button class="logout-button" id="logoutButton">
-                退出
-            </button>
-        </div>
-    </div>
-
-    <div class="chat-main">
-
-        <!-- 在线用户和会话列表 -->
-        <div class="online-panel">
-            <div class="online-header">
-                <span>会话</span>
-                <span class="online-count" id="onlineCount">0 人</span>
-            </div>
-
-            <div class="conversation-item active" id="publicChatItem">
-                <span class="online-dot"></span>
-                <span class="online-username">公共聊天室</span>
-            </div>
-
-            <div id="onlineUsers"></div>
-        </div>
-
-        <!-- 聊天消息区域 -->
-        <div class="chat-content">
-
-            <div class="history-button-container">
-                <button class="history-button" id="historyButton">
-                    加载更早的消息
-                </button>
-            </div>
-
-            <div class="chat-messages" id="chatMessages"></div>
-
-        </div>
-    </div>
-
-    <div class="chat-input-area">
-        <div class="chat-input-row">
-            <input class="chat-input"
-                   id="chatInput"
-                   maxlength="2000"
-                   placeholder="输入消息，按 Enter 发送">
-
-            <button class="send-button" id="sendButton">
-                发送
-            </button>
-        </div>
-
-        <div class="connection-status" id="connectionStatus">
-            正在连接...
-        </div>
-    </div>
-
-</div>
-
-<div class="admin-mask" id="adminMask">
-    <div class="admin-dialog">
-        <div class="admin-dialog-header">
-            <div class="admin-dialog-title">用户管理</div>
-            <button class="admin-close-button" id="adminCloseButton" type="button">关闭</button>
-        </div>
-        <div class="admin-dialog-body">
-            <form class="admin-create-form" id="adminCreateForm">
-                <div class="admin-field">
-                    <label for="adminNewUsername">新用户名（2–32 个字符）</label>
-                    <input id="adminNewUsername" maxlength="32" minlength="2" placeholder="输入用户名" required>
-                </div>
-                <div class="admin-field">
-                    <label for="adminNewPassword">初始密码（8–72 个字符）</label>
-                    <input id="adminNewPassword" type="password" minlength="8" maxlength="72" placeholder="输入初始密码" required>
-                </div>
-                <button class="admin-create-button" id="adminCreateButton" type="submit">创建用户</button>
-            </form>
-
-            <div class="admin-toolbar">
-                <span id="adminUserCount">用户列表</span>
-                <button class="admin-refresh-button" id="adminRefreshButton" type="button">刷新列表</button>
-            </div>
-
-            <div class="admin-table-wrap">
-                <table class="admin-table">
-                    <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>用户名</th>
-                        <th>角色</th>
-                        <th>状态</th>
-                        <th>创建时间</th>
-                        <th>操作</th>
-                    </tr>
-                    </thead>
-                    <tbody id="adminUsersBody">
-                    <tr><td class="admin-empty" colspan="6">正在加载...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="admin-message" id="adminMessage"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-    let currentUser = null;
-    let socket = null;
-    let socketConnecting = false;
-
-    let activePeer = null;
-    let currentOnlineUsers = [];
-
-    let oldestMessageId = null;
-    let loadingHistory = false;
-    let hasMoreHistory = true;
-
-    let viewToken = 0;
-
-    const unreadCounts = new Map();
-    const unreadLoadedUsers = new Set();
-    const unreadVersions = new Map();
-    const renderedMessageIds = new Set();
-
-    const loginContainer = document.getElementById("loginContainer");
-    const chatContainer = document.getElementById("chatContainer");
-    const loginForm = document.getElementById("loginForm");
-    const loginButton = document.getElementById("loginButton");
-    const loginMessage = document.getElementById("loginMessage");
-
-    const chatMessages = document.getElementById("chatMessages");
-    const chatInput = document.getElementById("chatInput");
-    const sendButton = document.getElementById("sendButton");
-    const historyButton = document.getElementById("historyButton");
-    const connectionStatus = document.getElementById("connectionStatus");
-    const chatTitle = document.getElementById("chatTitle");
-    const publicChatItem = document.getElementById("publicChatItem");
-
-    const onlineUsersElement = document.getElementById("onlineUsers");
-    const onlineCountElement = document.getElementById("onlineCount");
-
-    const adminUsersButton = document.getElementById("adminUsersButton");
-    const adminMask = document.getElementById("adminMask");
-    const adminUsersBody = document.getElementById("adminUsersBody");
-    const adminMessage = document.getElementById("adminMessage");
-    const adminUserCount = document.getElementById("adminUserCount");
-    const adminCreateForm = document.getElementById("adminCreateForm");
-    const adminCreateButton = document.getElementById("adminCreateButton");
-
-    function showLogin() {
-        loginContainer.style.display = "block";
-        chatContainer.style.display = "none";
-    }
-
-    function showChat() {
-        loginContainer.style.display = "none";
-        chatContainer.style.display = "flex";
-        document.getElementById("currentUsername").textContent = currentUser.username;
-        adminUsersButton.style.display = currentUser.is_admin ? "inline-block" : "none";
-    }
-
-    function resetChatState() {
-        viewToken++;
-
-        activePeer = null;
-        currentOnlineUsers = [];
-
-        oldestMessageId = null;
-        loadingHistory = false;
-        hasMoreHistory = true;
-
-        unreadCounts.clear();
-        unreadLoadedUsers.clear();
-        unreadVersions.clear();
-        renderedMessageIds.clear();
-
-        chatMessages.innerHTML = "";
-        onlineUsersElement.innerHTML = "";
-        onlineCountElement.textContent = "0 人";
-
-        chatTitle.textContent = "QChat · 公共聊天室";
-        chatInput.placeholder = "输入消息，按 Enter 发送";
-        publicChatItem.classList.add("active");
-
-        historyButton.disabled = false;
-    }
-
-    // 渲染在线用户列表
-    function renderOnlineUsers(users, count) {
-        currentOnlineUsers = users || [];
-        onlineUsersElement.innerHTML = "";
-        onlineCountElement.textContent = count + " 人";
-
-        currentOnlineUsers.forEach(user => {
-            const item = document.createElement("div");
-            item.className = "online-user";
-
-            if (activePeer && Number(activePeer.id) === Number(user.id)) {
-                item.classList.add("active");
-            }
-
-            const dot = document.createElement("span");
-            dot.className = "online-dot";
-
-            const username = document.createElement("span");
-            username.className = "online-username";
-            username.textContent = user.username;
-
-            item.appendChild(dot);
-            item.appendChild(username);
-
-            if (currentUser && Number(user.id) === Number(currentUser.id)) {
-                const me = document.createElement("span");
-                me.className = "online-me";
-                me.textContent = "我";
-                item.appendChild(me);
-            } else {
-                item.addEventListener("click", function () {
-                    openPrivateChat(user);
-                });
-
-                const unread = unreadCounts.get(Number(user.id)) || 0;
-                if (unread > 0) {
-                    const badge = document.createElement("span");
-                    badge.className = "unread-badge";
-                    badge.textContent = unread > 99 ? "99+" : unread;
-                    item.appendChild(badge);
-                }
-            }
-
-            onlineUsersElement.appendChild(item);
-
-            const userId = Number(user.id);
-            if (!unreadLoadedUsers.has(userId)) {
-                unreadLoadedUsers.add(userId);
-                loadUnreadCount(userId);
-            }
-        });
-    }
-
-    function refreshOnlineUsers() {
-        renderOnlineUsers(currentOnlineUsers, currentOnlineUsers.length);
-    }
-
-    async function loadUnreadCount(peerId) {
-        if (!currentUser) {
-            return;
-        }
-
-        const version = unreadVersions.get(peerId) || 0;
-
-        try {
-            const response = await fetch(
-                "/api/private/unread?peer_id=" + encodeURIComponent(peerId)
-            );
-
-            if (!response.ok) {
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success || !result.data) {
-                return;
-            }
-
-            if (!currentUser || (unreadVersions.get(peerId) || 0) !== version) {
-                return;
-            }
-
-            const count = Number(result.data.count || 0);
-
-            if (count > 0) {
-                unreadCounts.set(peerId, count);
-            } else {
-                unreadCounts.delete(peerId);
-            }
-
-            refreshOnlineUsers();
-        } catch (error) {
-            console.error("查询私聊未读消息失败", error);
-        }
-    }
-
-
-    // 管理员用户管理
-    function setAdminMessage(message, isError) {
-        adminMessage.textContent = message || "";
-        adminMessage.className = isError ? "admin-message error" : "admin-message";
-    }
-
-    function formatAdminTime(timestamp) {
-        if (!timestamp) {
-            return "-";
-        }
-        const date = new Date(Number(timestamp) * 1000);
-        if (Number.isNaN(date.getTime())) {
-            return "-";
-        }
-        return date.toLocaleString();
-    }
-
-    async function adminRequest(url, options) {
-        const response = await fetch(url, options || {});
-        let result = {};
-        try {
-            result = await response.json();
-        } catch (error) {
-            throw new Error("服务器返回了无法识别的数据");
-        }
-        if (!response.ok || !result.success) {
-            throw new Error(result.message || ("请求失败，HTTP " + response.status));
-        }
-        return result;
-    }
-
-    function openAdminPanel() {
-        if (!currentUser || !currentUser.is_admin) {
-            return;
-        }
-        adminMask.style.display = "flex";
-        setAdminMessage("", false);
-        loadAdminUsers();
-    }
-
-    function closeAdminPanel() {
-        adminMask.style.display = "none";
-    }
-
-    async function loadAdminUsers() {
-        if (!currentUser || !currentUser.is_admin) {
-            return;
-        }
-        adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">正在加载...</td></tr>';
-        setAdminMessage("", false);
-        try {
-            const result = await adminRequest("/api/admin/users");
-            const users = result.data && Array.isArray(result.data.users)
-                ? result.data.users
-                : (Array.isArray(result.data) ? result.data : []);
-            renderAdminUsers(users);
-        } catch (error) {
-            adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">加载失败</td></tr>';
-            adminUserCount.textContent = "用户列表";
-            setAdminMessage(error.message, true);
-        }
-    }
-
-    function renderAdminUsers(users) {
-        adminUsersBody.innerHTML = "";
-        adminUserCount.textContent = "共 " + users.length + " 个用户";
-        if (users.length === 0) {
-            adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">暂无用户</td></tr>';
-            return;
-        }
-
-        users.forEach(user => {
-            const row = document.createElement("tr");
-
-            const idCell = document.createElement("td");
-            idCell.textContent = user.id;
-
-            const nameCell = document.createElement("td");
-            nameCell.textContent = user.username;
-
-            const roleCell = document.createElement("td");
-            roleCell.textContent = user.is_admin ? "管理员" : "普通用户";
-            if (user.is_admin) {
-                roleCell.className = "admin-role";
-            }
-
-            const statusCell = document.createElement("td");
-            const status = document.createElement("span");
-            status.className = "admin-status " + (user.is_active ? "active" : "inactive");
-            status.textContent = user.is_active ? "已启用" : "已禁用";
-            statusCell.appendChild(status);
-
-            const createdCell = document.createElement("td");
-            createdCell.textContent = formatAdminTime(user.created_at);
-
-            const actionCell = document.createElement("td");
-            const resetButton = document.createElement("button");
-            resetButton.type = "button";
-            resetButton.className = "admin-action-button secondary";
-            resetButton.textContent = "重置密码";
-            resetButton.addEventListener("click", function () {
-                resetAdminUserPassword(user);
-            });
-            actionCell.appendChild(resetButton);
-
-            if (Number(user.id) !== Number(currentUser.id)) {
-                const statusButton = document.createElement("button");
-                statusButton.type = "button";
-                statusButton.className = "admin-action-button " + (user.is_active ? "danger" : "secondary");
-                statusButton.textContent = user.is_active ? "禁用" : "启用";
-                statusButton.addEventListener("click", function () {
-                    setAdminUserStatus(user, !user.is_active);
-                });
-                actionCell.appendChild(statusButton);
-            } else if (Number(user.id) === Number(currentUser.id)) {
-                const selfLabel = document.createElement("span");
-                selfLabel.textContent = "当前账号";
-                selfLabel.style.color = "#8490a0";
-                actionCell.appendChild(selfLabel);
-            }
-
-            row.appendChild(idCell);
-            row.appendChild(nameCell);
-            row.appendChild(roleCell);
-            row.appendChild(statusCell);
-            row.appendChild(createdCell);
-            row.appendChild(actionCell);
-            adminUsersBody.appendChild(row);
-        });
-    }
-
-    async function createAdminUser(event) {
-        event.preventDefault();
-        const username = document.getElementById("adminNewUsername").value.trim();
-        const password = document.getElementById("adminNewPassword").value;
-        if (username.length < 2 || username.length > 32) {
-            setAdminMessage("用户名长度必须为 2–32 个字符", true);
-            return;
-        }
-        if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
-            setAdminMessage("密码长度必须为 8–72 个字节", true);
-            return;
-        }
-
-        adminCreateButton.disabled = true;
-        try {
-            await adminRequest("/api/admin/users", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({username: username, password: password})
-            });
-            adminCreateForm.reset();
-            setAdminMessage("用户创建成功", false);
-            await loadAdminUsers();
-        } catch (error) {
-            setAdminMessage(error.message, true);
-        } finally {
-            adminCreateButton.disabled = false;
-        }
-    }
-
-    async function setAdminUserStatus(user, active) {
-        const action = active ? "启用" : "禁用";
-        if (!confirm("确定要" + action + "用户「" + user.username + "」吗？")) {
-            return;
-        }
-        try {
-            await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/status", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({is_active: active})
-            });
-            setAdminMessage("用户已" + action, false);
-            await loadAdminUsers();
-        } catch (error) {
-            setAdminMessage(error.message, true);
-        }
-    }
-
-    async function resetAdminUserPassword(user) {
-        const password = prompt("请输入用户「" + user.username + "」的新密码（8–72 个字符）：");
-        if (password === null) {
-            return;
-        }
-        if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
-            setAdminMessage("密码长度必须为 8–72 个字节", true);
-            return;
-        }
-        if (!confirm("确定重置用户「" + user.username + "」的密码吗？")) {
-            return;
-        }
-        try {
-            await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/password", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({password: password})
-            });
-            setAdminMessage("密码重置成功，该用户需要使用新密码重新登录", false);
-        } catch (error) {
-            setAdminMessage(error.message, true);
-        }
-    }
-
-    adminUsersButton.addEventListener("click", openAdminPanel);
-    document.getElementById("adminCloseButton").addEventListener("click", closeAdminPanel);
-    document.getElementById("adminRefreshButton").addEventListener("click", loadAdminUsers);
-    adminCreateForm.addEventListener("submit", createAdminUser);
-    adminMask.addEventListener("click", function (event) {
-        if (event.target === adminMask) {
-            closeAdminPanel();
-        }
-    });
-
-    async function checkLogin() {
-        try {
-            const response = await fetch("/api/me");
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                currentUser = result.data;
-                showChat();
-
-                await loadInitialMessages();
-                connectWebSocket();
-
-                chatInput.focus();
-            } else {
-                showLogin();
-            }
-        } catch (error) {
-            loginMessage.textContent = "无法连接服务器";
-        }
-    }
-
-    loginForm.addEventListener("submit", async function (event) {
-        event.preventDefault();
-
-        loginButton.disabled = true;
-        loginMessage.textContent = "";
-
-        try {
-            const response = await fetch("/api/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    username: document.getElementById("username").value,
-                    password: document.getElementById("password").value
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok || !result.success) {
-                loginMessage.textContent = result.message || "登录失败";
-                return;
-            }
-
-            currentUser = result.data;
-            document.getElementById("password").value = "";
-
-            resetChatState();
-            showChat();
-
-            await loadInitialMessages();
-            connectWebSocket();
-
-            chatInput.focus();
-        } catch (error) {
-            loginMessage.textContent = "无法连接服务器";
-        } finally {
-            loginButton.disabled = false;
-        }
-    });
-
-    // 加载公共聊天室初始消息
-    async function loadInitialMessages() {
-        const token = ++viewToken;
-
-        activePeer = null;
-        chatTitle.textContent = "QChat · 公共聊天室";
-        chatInput.placeholder = "输入消息，按 Enter 发送";
-        publicChatItem.classList.add("active");
-
-        chatMessages.innerHTML = "";
-        renderedMessageIds.clear();
-
-        oldestMessageId = null;
-        hasMoreHistory = true;
-        historyButton.disabled = false;
-
-        const response = await fetch("/api/messages");
-
-        if (token !== viewToken || !response.ok) {
-            return;
-        }
-
-        const result = await response.json();
-        const messages = result.data.messages || [];
-
-        messages.forEach(message => {
-            appendMessage(message, false);
-        });
-
-        if (messages.length > 0) {
-            oldestMessageId = messages[0].id;
-            scrollToBottom();
-        }
-
-        if (messages.length < 50) {
-            hasMoreHistory = false;
-            historyButton.disabled = true;
-        }
-    }
-
-    // 切换到公共聊天室
-    async function switchToPublicChat() {
-        await loadInitialMessages();
-
-        Array.from(onlineUsersElement.children).forEach(item => {
-            item.classList.remove("active");
-        });
-
-        chatInput.focus();
-    }
-
-    // 打开私聊
-    async function openPrivateChat(user) {
-        if (!user || !currentUser ||
-            Number(user.id) === Number(currentUser.id)) {
-            return;
-        }
-
-        const token = ++viewToken;
-
-        activePeer = user;
-
-        chatTitle.textContent = "私聊 · " + user.username;
-        chatInput.placeholder = "发送给 " + user.username + "，按 Enter 发送";
-
-        publicChatItem.classList.remove("active");
-
-        Array.from(onlineUsersElement.children).forEach(item => {
-            item.classList.remove("active");
-        });
-
-        const selected = Array.from(onlineUsersElement.children).find(item => {
-            const name = item.querySelector(".online-username");
-            return name && name.textContent === user.username;
-        });
-
-        if (selected) {
-            selected.classList.add("active");
-        }
-
-        unreadCounts.delete(Number(user.id));
-        unreadVersions.set(Number(user.id), (unreadVersions.get(Number(user.id)) || 0) + 1);
-        refreshOnlineUsers();
-
-        chatMessages.innerHTML = "";
-        renderedMessageIds.clear();
-
-        oldestMessageId = null;
-        hasMoreHistory = true;
-        historyButton.disabled = false;
-
-        await loadPrivateMessages(null, token);
-
-        if (token === viewToken) {
-            chatInput.focus();
-        }
-    }
-
-    // 加载私聊历史消息
-    async function loadPrivateMessages(beforeId, token) {
-        if (!activePeer) {
-            return;
-        }
-
-        const peerId = Number(activePeer.id);
-
-        const url = "/api/private/messages?peer_id=" + encodeURIComponent(peerId)
-                    + (beforeId ? "&before_id=" + encodeURIComponent(beforeId) : "");
-
-        try {
-            const response = await fetch(url);
-
-            if (token !== viewToken || !response.ok) {
-                return;
-            }
-
-            const result = await response.json();
-
-            if (!result.success || !result.data) {
-                return;
-            }
-
-            if (token !== viewToken) {
-                return;
-            }
-
-            const messages = result.data.messages || [];
-
-            if (beforeId) {
-                messages.forEach(message => {
-                    prependMessage(message, true);
-                });
-            } else {
-                messages.forEach(message => {
-                    appendMessage(message, true);
-                });
-            }
-
-            if (messages.length > 0) {
-                oldestMessageId = messages[0].id;
-
-                if (!beforeId) {
-                    scrollToBottom();
-                }
-            }
-
-            hasMoreHistory = messages.length >= 50;
-            historyButton.disabled = !hasMoreHistory;
-
-            unreadCounts.delete(peerId);
-            refreshOnlineUsers();
-        } catch (error) {
-            console.error("加载私聊历史异常", error);
-        }
-    }
-
-    // 加载更早的消息
-    async function loadOlderMessages() {
-        if (loadingHistory || !hasMoreHistory || oldestMessageId === null) {
-            return;
-        }
-
-        loadingHistory = true;
-        historyButton.disabled = true;
-
-        const oldHeight = chatMessages.scrollHeight;
-        const oldTop = chatMessages.scrollTop;
-        const token = viewToken;
-
-        try {
-            if (activePeer) {
-                await loadPrivateMessages(oldestMessageId, token);
-            } else {
-                const response = await fetch(
-                    "/api/messages?before_id=" + encodeURIComponent(oldestMessageId)
-                );
-
-                if (!response.ok || token !== viewToken) {
-                    return;
-                }
-
-                const result = await response.json();
-                const messages = result.data.messages || [];
-
-                if (messages.length === 0) {
-                    hasMoreHistory = false;
-                    return;
-                }
-
-                messages.forEach(message => {
-                    prependMessage(message, false);
-                });
-
-                oldestMessageId = messages[0].id;
-
-                if (messages.length < 50) {
-                    hasMoreHistory = false;
-                }
-            }
-
-            if (token === viewToken) {
-                const newHeight = chatMessages.scrollHeight;
-                chatMessages.scrollTop = oldTop + (newHeight - oldHeight);
-            }
-        } catch (error) {
-            console.error("加载更早消息失败", error);
-        } finally {
-            loadingHistory = false;
-            historyButton.disabled = !hasMoreHistory;
-        }
-    }
-
-    // 追加消息，使用消息类型和 ID 去重
-    function appendMessage(message, isPrivate) {
-        const key = (isPrivate ? "p-" : "m-") + message.id;
-
-        if (renderedMessageIds.has(key)) {
-            return;
-        }
-
-        renderedMessageIds.add(key);
-
-        const element = createMessageElement(message, isPrivate);
-        chatMessages.appendChild(element);
-
-        if (oldestMessageId === null || Number(message.id) < Number(oldestMessageId)) {
-            oldestMessageId = message.id;
-        }
-    }
-
-    // 在消息列表顶部插入历史消息
-    function prependMessage(message, isPrivate) {
-        const key = (isPrivate ? "p-" : "m-") + message.id;
-
-        if (renderedMessageIds.has(key)) {
-            return;
-        }
-
-        renderedMessageIds.add(key);
-
-        const element = createMessageElement(message, isPrivate);
-        chatMessages.insertBefore(element, chatMessages.firstChild);
-    }
-
-    // 创建消息 DOM
-    function createMessageElement(message, isPrivate) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "chat-message";
-
-        const senderId = isPrivate ? message.sender_id : message.user_id;
-        const senderName = isPrivate ? message.sender_name : message.username;
-
-        if (currentUser && Number(senderId) === Number(currentUser.id)) {
-            wrapper.classList.add("mine");
-        }
-
-        const info = document.createElement("div");
-        info.className = "message-info";
-
-        const date = new Date(message.created_at * 1000);
-        info.textContent = senderName + " · " + date.toLocaleString();
-
-        const content = document.createElement("div");
-        content.className = "message-content";
-        content.textContent = message.content;
-
-        wrapper.appendChild(info);
-        wrapper.appendChild(content);
-
-        return wrapper;
-    }
-
-    // WebSocket 连接
-    function connectWebSocket() {
-        if (!currentUser) {
-            return;
-        }
-
-        if (socket &&
-            (socket.readyState === WebSocket.OPEN ||
-             socket.readyState === WebSocket.CONNECTING)) {
-            return;
-        }
-
-        if (socketConnecting) {
-            return;
-        }
-
-        socketConnecting = true;
-
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const url = protocol + "//" + location.host + "/ws/chat";
-
-        const newSocket = new WebSocket(url);
-        socket = newSocket;
-
-        newSocket.onopen = function () {
-            socketConnecting = false;
-
-            if (socket !== newSocket) {
-                newSocket.close();
-                return;
-            }
-
-            connectionStatus.textContent = "● 已连接";
-            connectionStatus.className = "connection-status connected";
-        };
-
-        newSocket.onmessage = function (event) {
-            if (socket !== newSocket) {
-                return;
-            }
-
-            try {
-                const data = JSON.parse(event.data);
-
-                if (data.type === "message" && data.message) {
-                    if (!activePeer) {
-                        appendMessage(data.message, false);
-                        scrollToBottom();
-                    }
-                } else if (data.type === "private_message" && data.private_message) {
-                    handlePrivateMessage(data.private_message);
-                } else if (data.type === "online_users") {
-                    renderOnlineUsers(data.users || [], data.count || 0);
-                } else if (data.type === "file_message_deleted") {
-                    if (window.removeFileMessageFromChat) {
-						window.removeFileMessageFromChat(data.scope, data.message_id, data);
-                    }
-                } else if (data.type === "error") {
-                    console.error("服务器消息错误：", data.error);
-                    connectionStatus.textContent = "● " + (data.error || "消息发送失败");
-                    connectionStatus.className = "connection-status disconnected";
-                }
-            } catch (error) {
-                console.error("消息解析失败", error);
-            }
-        };
-
-        newSocket.onclose = function () {
-            socketConnecting = false;
-
-            if (socket === newSocket) {
-                socket = null;
-                connectionStatus.textContent = "● 连接已断开";
-                connectionStatus.className = "connection-status disconnected";
-            }
-        };
-
-        newSocket.onerror = function () {
-            socketConnecting = false;
-
-            if (socket === newSocket) {
-                connectionStatus.textContent = "● 连接错误";
-                connectionStatus.className = "connection-status disconnected";
-            }
-        };
-    }
-
-    // 接收私聊消息
-    function handlePrivateMessage(message) {
-        if (!currentUser) {
-            return;
-        }
-
-        const currentId = Number(currentUser.id);
-        const senderId = Number(message.sender_id);
-        const receiverId = Number(message.receiver_id);
-
-        const peerId = senderId === currentId ? receiverId : senderId;
-
-        // 当前正在与消息另一方聊天
-        if (activePeer && Number(activePeer.id) === peerId) {
-            appendMessage(message, true);
-            scrollToBottom();
-
-            if (receiverId === currentId) {
-                unreadCounts.delete(peerId);
-                unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
-            }
-
-            refreshOnlineUsers();
-            return;
-        }
-
-        // 当前用户是接收者，但没有打开对应私聊窗口
-        if (receiverId === currentId) {
-            const count = unreadCounts.get(peerId) || 0;
-            unreadCounts.set(peerId, count + 1);
-            unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
-
-            refreshOnlineUsers();
-        }
-    }
-
-    // 发送消息
-    function sendMessage() {
-        const content = chatInput.value.trim();
-
-        if (!content) {
-            return;
-        }
-
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            connectionStatus.textContent = "● WebSocket 未连接";
-            connectionStatus.className = "connection-status disconnected";
-            return;
-        }
-
-        if (activePeer) {
-            socket.send(JSON.stringify({
-                type: "private_message",
-                receiver_id: Number(activePeer.id),
-                content: content
-            }));
-        } else {
-            socket.send(JSON.stringify({
-                type: "message",
-                content: content
-            }));
-        }
-
-        chatInput.value = "";
-        chatInput.focus();
-    }
-
-    sendButton.addEventListener("click", sendMessage);
-
-    chatInput.addEventListener("keydown", function (event) {
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            sendMessage();
-        }
-    });
-
-    historyButton.addEventListener("click", loadOlderMessages);
-
-    publicChatItem.addEventListener("click", switchToPublicChat);
-
-    function scrollToBottom() {
-        requestAnimationFrame(function () {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        });
-    }
-
-    // 退出登录
-    document.getElementById("logoutButton").addEventListener("click", async function () {
-        if (socket) {
-            const oldSocket = socket;
-            socket = null;
-            oldSocket.close();
-        }
-
-        socketConnecting = false;
-
-        try {
-            await fetch("/api/logout", {
-                method: "POST"
-            });
-        } catch (error) {
-            console.error("退出登录请求失败", error);
-        }
-
-        currentUser = null;
-        adminMask.style.display = "none";
-        adminUsersButton.style.display = "none";
-        resetChatState();
-
-        connectionStatus.textContent = "正在连接...";
-        connectionStatus.className = "connection-status";
-
-        showLogin();
-    });
-
-    checkLogin();
-</script>
-
-
-	<script>
-		(function () {
-			"use strict";
-
-			const inputRow = document.querySelector(".chat-input-row");
-			const chatInputElement = document.getElementById("chatInput");
-			const chatInputArea = document.querySelector(".chat-input-area");
+	<head>
+		<meta charset="UTF-8">
+		<meta content="width=device-width, initial-scale=1.0" name="viewport">
+		<title>QChat</title>
+		<link rel="icon" type="image/x-ico"
+			  href="data:image/x-icon;base64,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">
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+
+			html, body {
+				margin: 0;
+				width: 100%;
+				height: 100%;
+				font-family: "Microsoft YaHei", Arial, sans-serif;
+				background: #f3f5f9;
+				color: #303846;
+			}
+
+			.login-container {
+				width: 400px;
+				max-width: calc(100% - 32px);
+				padding: 36px;
+				background: white;
+				border-radius: 12px;
+				box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				transform: translate(-50%, -50%);
+			}
+
+			.login-container h1 {
+				margin: 0;
+				text-align: center;
+				color: #2878e8;
+			}
+
+			.subtitle {
+				margin: 12px 0 30px;
+				text-align: center;
+				color: #8490a0;
+				font-size: 14px;
+			}
+
+			.form-item {
+				margin-bottom: 18px;
+			}
+
+			.form-item label {
+				display: block;
+				margin-bottom: 8px;
+				font-size: 14px;
+			}
+
+			input {
+				width: 100%;
+				height: 42px;
+				padding: 0 12px;
+				border: 1px solid #dce1e8;
+				border-radius: 6px;
+				outline: none;
+				font-size: 14px;
+			}
+
+			input:focus {
+				border-color: #2878e8;
+			}
+
+			button {
+				border: none;
+				border-radius: 6px;
+				background: #2878e8;
+				color: white;
+				cursor: pointer;
+			}
+
+			button:hover {
+				background: #1766d4;
+			}
+
+			button:disabled {
+				opacity: 0.5;
+				cursor: not-allowed;
+			}
+
+			.login-button {
+				width: 100%;
+				height: 44px;
+				font-size: 15px;
+			}
+
+			.message-error {
+				min-height: 20px;
+				margin-top: 14px;
+				text-align: center;
+				color: #d44;
+				font-size: 13px;
+			}
+
+			.chat-container {
+				display: none;
+				width: 100%;
+				height: 100%;
+				flex-direction: column;
+			}
+
+			.chat-header {
+				height: 60px;
+				flex-shrink: 0;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0 24px;
+				background: white;
+				border-bottom: 1px solid #e5e8ed;
+			}
+
+			.chat-title {
+				font-size: 18px;
+				font-weight: bold;
+				color: #2878e8;
+			}
+
+			.chat-user {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				font-size: 14px;
+			}
+
+			.logout-button {
+				padding: 7px 14px;
+				background: #f1f3f6;
+				color: #555;
+			}
+
+			.logout-button:hover {
+				background: #e5e8ed;
+			}
+
+			.chat-main {
+				flex: 1;
+				min-height: 0;
+				display: flex;
+				flex-direction: row;
+			}
+
+			/* 在线用户侧边栏 */
+			.online-panel {
+				width: 220px;
+				flex-shrink: 0;
+				display: flex;
+				flex-direction: column;
+				background: white;
+				border-right: 1px solid #e5e8ed;
+				overflow-y: auto;
+			}
+
+			.online-header {
+				height: 48px;
+				flex-shrink: 0;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0 15px;
+				border-bottom: 1px solid #f0f1f3;
+				font-size: 14px;
+				font-weight: bold;
+			}
+
+			.online-count {
+				color: #8490a0;
+				font-size: 12px;
+				font-weight: normal;
+			}
+
+			.conversation-item, .online-user {
+				display: flex;
+				align-items: center;
+				gap: 9px;
+				padding: 11px 15px;
+				font-size: 13px;
+				border-bottom: 1px solid #f0f1f3;
+				cursor: pointer;
+			}
+
+			.conversation-item:hover, .online-user:hover {
+				background: #f5f7fa;
+			}
+
+			.conversation-item.active, .online-user.active {
+				background: #eaf2ff;
+			}
+
+			.online-dot {
+				width: 8px;
+				height: 8px;
+				flex-shrink: 0;
+				border-radius: 50%;
+				background: #28b56a;
+			}
+
+			.online-username {
+				flex: 1;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.online-me {
+				color: #2878e8;
+				font-size: 11px;
+			}
+
+			.unread-badge {
+				min-width: 18px;
+				height: 18px;
+				padding: 0 5px;
+				border-radius: 9px;
+				background: #e5484d;
+				color: white;
+				font-size: 11px;
+				line-height: 18px;
+				text-align: center;
+			}
+
+			/* 右侧聊天内容 */
+			.chat-content {
+				flex: 1;
+				min-width: 0;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+			}
+
+			.history-button-container {
+				padding: 10px;
+				text-align: center;
+			}
+
+			.history-button {
+				padding: 7px 14px;
+				background: #f1f3f6;
+				color: #555;
+				font-size: 12px;
+			}
+
+			.history-button:hover {
+				background: #e5e8ed;
+			}
+
+			.history-button:disabled {
+				opacity: 0.5;
+				cursor: not-allowed;
+			}
+
+			.chat-messages {
+				flex: 1;
+				min-height: 0;
+				overflow-y: auto;
+				padding: 10px 20px 20px;
+			}
+
+			.chat-message {
+				margin-bottom: 16px;
+			}
+
+			.message-info {
+				margin-bottom: 4px;
+				color: #8b94a1;
+				font-size: 12px;
+			}
+
+			.message-content {
+				display: inline-block;
+				max-width: min(700px, 80%);
+				padding: 10px 13px;
+				border-radius: 8px;
+				background: white;
+				box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+
+			.chat-message.mine .message-info {
+				text-align: right;
+			}
+
+			.chat-message.mine {
+				text-align: right;
+			}
+
+			.chat-message.mine .message-content {
+				background: #2878e8;
+				color: white;
+				text-align: left;
+			}
+
+			.chat-input-area {
+				padding: 12px;
+				background: white;
+				border-top: 1px solid #e5e8ed;
+			}
+
+			.chat-input-row {
+				display: flex;
+				align-items: flex-end;
+				gap: 10px;
+			}
+
+			.chat-input {
+				flex: 1;
+				height: 72px;
+				min-height: 72px;
+				max-height: 72px;
+				line-height: 24px;
+				padding: 10px 12px;
+				box-sizing: border-box;
+				resize: none;
+				overflow-y: auto;
+				font-family: inherit;
+				font-size: inherit;
+			}
+
+			.send-button {
+				width: 80px;
+				height: 40px;
+			}
+
+			.connection-status {
+				margin-top: 6px;
+				color: #8490a0;
+				font-size: 12px;
+			}
+
+			.connection-status.connected {
+				color: #21864a;
+			}
+
+			.connection-status.disconnected {
+				color: #d44;
+			}
+
+
+			/* 管理员用户管理 */
+			.admin-button {
+				padding: 7px 14px;
+				background: #2878e8;
+				color: white;
+			}
+
+			.admin-button:hover {
+				background: #1766d4;
+			}
+
+			.admin-mask {
+				display: none;
+				position: fixed;
+				inset: 0;
+				z-index: 1000;
+				align-items: center;
+				justify-content: center;
+				padding: 20px;
+				background: rgba(20, 30, 45, 0.48);
+			}
+
+			.admin-dialog {
+				width: 900px;
+				max-width: 100%;
+				max-height: 90vh;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+				background: white;
+				border-radius: 12px;
+				box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+			}
+
+			.admin-dialog-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 16px 20px;
+				border-bottom: 1px solid #e5e8ed;
+			}
+
+			.admin-dialog-title {
+				font-size: 17px;
+				font-weight: bold;
+			}
+
+			.admin-close-button {
+				padding: 6px 12px;
+				background: #f1f3f6;
+				color: #555;
+			}
+
+			.admin-dialog-body {
+				padding: 18px 20px;
+				overflow-y: auto;
+			}
+
+			.admin-create-form {
+				display: grid;
+				grid-template-columns: 1fr 1fr auto;
+				gap: 10px;
+				align-items: end;
+				margin-bottom: 18px;
+				padding: 15px;
+				background: #f7f9fc;
+				border: 1px solid #e8edf4;
+				border-radius: 8px;
+			}
+
+			.admin-field label {
+				display: block;
+				margin-bottom: 6px;
+				color: #596579;
+				font-size: 12px;
+			}
+
+			.admin-field input {
+				height: 38px;
+			}
+
+			.admin-create-button {
+				height: 38px;
+				padding: 0 18px;
+				white-space: nowrap;
+			}
+
+			.admin-toolbar {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 10px;
+				margin-bottom: 10px;
+				font-size: 13px;
+				color: #687386;
+			}
+
+			.admin-refresh-button {
+				padding: 7px 12px;
+				background: #f1f3f6;
+				color: #555;
+			}
+
+			.admin-table-wrap {
+				overflow-x: auto;
+				border: 1px solid #e5e8ed;
+				border-radius: 8px;
+			}
+
+			.admin-table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 13px;
+				white-space: nowrap;
+			}
+
+			.admin-table th, .admin-table td {
+				padding: 11px 12px;
+				text-align: left;
+				border-bottom: 1px solid #edf0f4;
+			}
+
+			.admin-table th {
+				background: #f7f9fc;
+				color: #596579;
+				font-weight: 600;
+			}
+
+			.admin-table tr:last-child td {
+				border-bottom: none;
+			}
+
+			.admin-status {
+				display: inline-block;
+				padding: 3px 8px;
+				border-radius: 12px;
+				font-size: 11px;
+			}
+
+			.admin-status.active {
+				background: #e8f7ee;
+				color: #21864a;
+			}
+
+			.admin-status.inactive {
+				background: #fff0f0;
+				color: #c33;
+			}
+
+			.admin-role {
+				color: #2878e8;
+			}
+
+			.admin-action-button {
+				margin-right: 5px;
+				padding: 5px 9px;
+				font-size: 12px;
+			}
+
+			.admin-action-button.secondary {
+				background: #eef2f7;
+				color: #465267;
+			}
+
+			.admin-action-button.danger {
+				background: #d94b4b;
+				color: white;
+			}
+
+			.admin-message {
+				min-height: 20px;
+				margin: 10px 0 0;
+				font-size: 13px;
+				color: #21864a;
+			}
+
+			.admin-message.error {
+				color: #d44;
+			}
+
+			.admin-empty {
+				padding: 24px;
+				text-align: center;
+				color: #8490a0;
+			}
+
+			@media (max-width: 700px) {
+				.admin-create-form {
+					grid-template-columns: 1fr;
+				}
+
+				.admin-create-button {
+					width: 100%;
+				}
+
+				.admin-mask {
+					padding: 8px;
+				}
+
+				.admin-dialog {
+					max-height: 96vh;
+				}
+
+				.admin-dialog-body {
+					padding: 12px;
+				}
+			}
+
+			@media (max-width: 600px) {
+				.chat-header {
+					padding: 0 12px;
+				}
+
+				.online-panel {
+					width: 130px;
+				}
+
+				.online-header {
+					padding: 0 8px;
+					font-size: 12px;
+				}
+
+				.online-user, .conversation-item {
+					gap: 5px;
+					padding: 10px 7px;
+					font-size: 12px;
+				}
+
+				.chat-messages {
+					padding-left: 10px;
+					padding-right: 10px;
+				}
+
+				.message-content {
+					max-width: 90%;
+				}
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="login-container" id="loginContainer">
+			<h1>QChat</h1>
+
+			<div class="subtitle">
+				😄 😊 😃 😀
+			</div>
+
+			<form id="loginForm">
+				<div class="form-item">
+					<label for="username">用户名</label>
+					<input autocomplete="username" id="username" required>
+				</div>
+
+				<div class="form-item">
+					<label for="password">密码</label>
+					<input autocomplete="current-password" id="password" required type="password">
+				</div>
+
+				<button class="login-button" id="loginButton" type="submit">
+					登 录
+				</button>
+
+				<div class="message-error" id="loginMessage"></div>
+			</form>
+		</div>
+
+		<div class="chat-container" id="chatContainer">
+
+			<div class="chat-header">
+				<div class="chat-title" id="chatTitle">
+					QChat · 公共聊天室
+				</div>
+
+				<div class="chat-user">
+					<span id="currentUsername"></span>
+					<button class="admin-button" id="adminUsersButton" style="display:none" type="button">
+						用户管理
+					</button>
+					<button class="logout-button" id="logoutButton">
+						退出
+					</button>
+				</div>
+			</div>
+
+			<div class="chat-main">
+
+				<!-- 在线用户和会话列表 -->
+				<div class="online-panel">
+					<div class="online-header">
+						<span>会话</span>
+						<span class="online-count" id="onlineCount">0 人</span>
+					</div>
+
+					<div class="conversation-item active" id="publicChatItem">
+						<span class="online-dot"></span>
+						<span class="online-username">公共聊天室</span>
+					</div>
+
+					<div id="onlineUsers"></div>
+				</div>
+
+				<!-- 聊天消息区域 -->
+				<div class="chat-content">
+
+					<div class="history-button-container">
+						<button class="history-button" id="historyButton">
+							加载更早的消息
+						</button>
+					</div>
+
+					<div class="chat-messages" id="chatMessages"></div>
+
+				</div>
+			</div>
+
+			<div class="chat-input-area">
+				<div class="chat-input-row">
+					<textarea class="chat-input" id="chatInput" rows="3" maxlength="2100" placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"></textarea>
+
+					<button class="send-button" id="sendButton">
+						发送
+					</button>
+				</div>
+
+				<div class="connection-status" id="connectionStatus">
+					正在连接...
+				</div>
+			</div>
+
+		</div>
+
+		<div class="admin-mask" id="adminMask">
+			<div class="admin-dialog">
+				<div class="admin-dialog-header">
+					<div class="admin-dialog-title">用户管理</div>
+					<button class="admin-close-button" id="adminCloseButton" type="button">关闭</button>
+				</div>
+				<div class="admin-dialog-body">
+					<form class="admin-create-form" id="adminCreateForm">
+						<div class="admin-field">
+							<label for="adminNewUsername">新用户名（2–32 个字符）</label>
+							<input id="adminNewUsername" maxlength="32" minlength="2" placeholder="输入用户名" required>
+						</div>
+						<div class="admin-field">
+							<label for="adminNewPassword">初始密码（8–72 个字符）</label>
+							<input id="adminNewPassword" type="password" minlength="8" maxlength="72" placeholder="输入初始密码" required>
+						</div>
+						<button class="admin-create-button" id="adminCreateButton" type="submit">创建用户</button>
+					</form>
+
+					<div class="admin-toolbar">
+						<span id="adminUserCount">用户列表</span>
+						<button class="admin-refresh-button" id="adminRefreshButton" type="button">刷新列表</button>
+					</div>
+
+					<div class="admin-table-wrap">
+						<table class="admin-table">
+							<thead>
+							<tr>
+								<th>ID</th>
+								<th>用户名</th>
+								<th>角色</th>
+								<th>状态</th>
+								<th>创建时间</th>
+								<th>操作</th>
+							</tr>
+							</thead>
+							<tbody id="adminUsersBody">
+							<tr>
+								<td class="admin-empty" colspan="6">正在加载...</td>
+							</tr>
+							</tbody>
+						</table>
+					</div>
+					<div class="admin-message" id="adminMessage"></div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			let currentUser = null;
+			let socket = null;
+			let socketConnecting = false;
+
+			let activePeer = null;
+			let currentOnlineUsers = [];
+
+			let oldestMessageId = null;
+			let loadingHistory = false;
+			let hasMoreHistory = true;
+
+			let viewToken = 0;
+
+			const unreadCounts = new Map();
+			const unreadLoadedUsers = new Set();
+			const unreadVersions = new Map();
+			const renderedMessageIds = new Set();
+
+			const loginContainer = document.getElementById("loginContainer");
 			const chatContainer = document.getElementById("chatContainer");
+			const loginForm = document.getElementById("loginForm");
+			const loginButton = document.getElementById("loginButton");
+			const loginMessage = document.getElementById("loginMessage");
 
-			if (!inputRow || !chatInputElement || !chatInputArea || !chatContainer) {
-				console.error("文件上传初始化失败：找不到聊天界面元素");
-				return;
+			const chatMessages = document.getElementById("chatMessages");
+			const chatInput = document.getElementById("chatInput");
+			const sendButton = document.getElementById("sendButton");
+			const historyButton = document.getElementById("historyButton");
+			const connectionStatus = document.getElementById("connectionStatus");
+			const chatTitle = document.getElementById("chatTitle");
+			const publicChatItem = document.getElementById("publicChatItem");
+
+			const onlineUsersElement = document.getElementById("onlineUsers");
+			const onlineCountElement = document.getElementById("onlineCount");
+
+			const adminUsersButton = document.getElementById("adminUsersButton");
+			const adminMask = document.getElementById("adminMask");
+			const adminUsersBody = document.getElementById("adminUsersBody");
+			const adminMessage = document.getElementById("adminMessage");
+			const adminUserCount = document.getElementById("adminUserCount");
+			const adminCreateForm = document.getElementById("adminCreateForm");
+			const adminCreateButton = document.getElementById("adminCreateButton");
+
+			function showLogin() {
+				loginContainer.style.display = "block";
+				chatContainer.style.display = "none";
 			}
 
-			// ==================== 配置 ====================
-
-			let maxFileSizeMB = 0;
-
-			const ACK_TIMEOUT = 20000;
-			const pendingAcks = new Map();
-			const attachedSockets = new WeakSet();
-
-			let requestCounter = 0;
-			let taskCounter = 0;
-			let processingQueue = false;
-			let dragCounter = 0;
-			let queuePanelDismissed = false;
-
-			const tasks = [];
-
-			// ==================== 图片预览 ====================
-
-			const previewImageTypes = new Set([
-				"image/jpeg",
-				"image/png",
-				"image/gif",
-				"image/webp"
-			]);
-
-			const imagePreviewMask = document.createElement("div");
-			imagePreviewMask.style.position = "fixed";
-			imagePreviewMask.style.inset = "0";
-			imagePreviewMask.style.zIndex = "2000";
-			imagePreviewMask.style.display = "none";
-			imagePreviewMask.style.alignItems = "center";
-			imagePreviewMask.style.justifyContent = "center";
-			imagePreviewMask.style.padding = "30px";
-			imagePreviewMask.style.background = "rgba(0, 0, 0, 0.85)";
-			imagePreviewMask.style.cursor = "zoom-out";
-
-			const imagePreview = document.createElement("img");
-			imagePreview.style.display = "block";
-			imagePreview.style.maxWidth = "95vw";
-			imagePreview.style.maxHeight = "90vh";
-			imagePreview.style.objectFit = "contain";
-			imagePreview.style.borderRadius = "6px";
-			imagePreview.style.boxShadow = "0 4px 30px rgba(0,0,0,0.4)";
-			imagePreview.style.cursor = "default";
-
-			const imagePreviewClose = document.createElement("button");
-			imagePreviewClose.type = "button";
-			imagePreviewClose.textContent = "关闭";
-			imagePreviewClose.style.position = "absolute";
-			imagePreviewClose.style.top = "20px";
-			imagePreviewClose.style.right = "25px";
-			imagePreviewClose.style.padding = "8px 16px";
-			imagePreviewClose.style.background = "rgba(255,255,255,0.2)";
-			imagePreviewClose.style.color = "#fff";
-			imagePreviewClose.style.fontSize = "14px";
-			imagePreviewClose.style.cursor = "pointer";
-
-			imagePreviewMask.appendChild(imagePreview);
-			imagePreviewMask.appendChild(imagePreviewClose);
-			document.body.appendChild(imagePreviewMask);
-
-			function closeImagePreview() {
-				imagePreviewMask.style.display = "none";
-				imagePreview.removeAttribute("src");
+			function showChat() {
+				loginContainer.style.display = "none";
+				chatContainer.style.display = "flex";
+				document.getElementById("currentUsername").textContent = currentUser.username;
+				adminUsersButton.style.display = currentUser.is_admin ? "inline-block" : "none";
 			}
 
-			function openImagePreview(url) {
-				imagePreview.src = url;
-				imagePreviewMask.style.display = "flex";
+			function resetChatState() {
+				viewToken++;
+
+				activePeer = null;
+				currentOnlineUsers = [];
+
+				oldestMessageId = null;
+				loadingHistory = false;
+				hasMoreHistory = true;
+
+				unreadCounts.clear();
+				unreadLoadedUsers.clear();
+				unreadVersions.clear();
+				renderedMessageIds.clear();
+
+				chatMessages.innerHTML = "";
+				onlineUsersElement.innerHTML = "";
+				onlineCountElement.textContent = "0 人";
+
+				chatTitle.textContent = "QChat · 公共聊天室";
+				chatInput.placeholder = "输入消息，按 Enter 发送";
+				publicChatItem.classList.add("active");
+
+				historyButton.disabled = false;
 			}
 
-			imagePreviewMask.addEventListener("click", function (event) {
-				if (event.target === imagePreviewMask) {
-					closeImagePreview();
-				}
-			});
-
-			imagePreviewClose.addEventListener("click", closeImagePreview);
-
-			imagePreview.addEventListener("click", function (event) {
-				event.stopPropagation();
-			});
-
-			document.addEventListener("keydown", function (event) {
-				if (event.key === "Escape" && imagePreviewMask.style.display === "flex") {
-					closeImagePreview();
-				}
-			});
-
-			// ==================== UI 初始化 ====================
-
-			const fileButton = document.createElement("button");
-			fileButton.type = "button";
-			fileButton.textContent = "文件";
-			fileButton.style.width = "70px";
-			fileButton.style.flexShrink = "0";
-			fileButton.title = "选择文件上传";
-			fileButton.disabled = true;
-
-			const fileInput = document.createElement("input");
-			fileInput.type = "file";
-			fileInput.multiple = true;
-			fileInput.style.display = "none";
-			fileInput.disabled = true;
-
-			const fileStatus = document.createElement("div");
-			fileStatus.style.marginTop = "6px";
-			fileStatus.style.fontSize = "12px";
-			fileStatus.style.color = "#8490a0";
-			fileStatus.textContent = "正在读取服务器上传限制...";
-
-			const queuePanel = document.createElement("div");
-			queuePanel.style.display = "none";
-			queuePanel.style.marginTop = "10px";
-			queuePanel.style.padding = "10px";
-			queuePanel.style.background = "#f7f9fc";
-			queuePanel.style.border = "1px solid #e5e8ed";
-			queuePanel.style.borderRadius = "8px";
-			queuePanel.style.maxHeight = "220px";
-			queuePanel.style.overflowY = "auto";
-
-			const queueHeader = document.createElement("div");
-			queueHeader.style.display = "flex";
-			queueHeader.style.justifyContent = "space-between";
-			queueHeader.style.alignItems = "center";
-			queueHeader.style.marginBottom = "8px";
-			queueHeader.style.fontSize = "12px";
-			queueHeader.style.fontWeight = "bold";
-
-			const queueTitle = document.createElement("span");
-			queueTitle.textContent = "上传队列";
-
-			const queueProgress = document.createElement("span");
-			queueProgress.style.color = "#2878e8";
-
-			const queueHeaderRight = document.createElement("div");
-			queueHeaderRight.style.display = "flex";
-			queueHeaderRight.style.alignItems = "center";
-			queueHeaderRight.style.gap = "10px";
-
-			const queueCloseButton = document.createElement("button");
-			queueCloseButton.type = "button";
-			queueCloseButton.textContent = "×";
-			queueCloseButton.title = "关闭上传进度";
-			queueCloseButton.setAttribute("aria-label", "关闭上传进度");
-			queueCloseButton.style.width = "22px";
-			queueCloseButton.style.height = "22px";
-			queueCloseButton.style.padding = "0";
-			queueCloseButton.style.border = "none";
-			queueCloseButton.style.borderRadius = "50%";
-			queueCloseButton.style.background = "transparent";
-			queueCloseButton.style.color = "#8490a0";
-			queueCloseButton.style.fontSize = "20px";
-			queueCloseButton.style.lineHeight = "20px";
-			queueCloseButton.style.cursor = "pointer";
-			queueCloseButton.style.flexShrink = "0";
-
-			queueCloseButton.addEventListener("mouseenter", function () {
-				queueCloseButton.style.background = "#d94b4b";
-				queueCloseButton.style.color = "#fff";
-			});
-
-			queueCloseButton.addEventListener("mouseleave", function () {
-				queueCloseButton.style.background = "transparent";
-				queueCloseButton.style.color = "#8490a0";
-			});
-
-			queueCloseButton.addEventListener("click", function () {
-				queuePanelDismissed = true;
-				queuePanel.style.display = "none";
-			});
-
-			queueHeaderRight.appendChild(queueProgress);
-			queueHeaderRight.appendChild(queueCloseButton);
-			queueHeader.appendChild(queueTitle);
-			queueHeader.appendChild(queueHeaderRight);
-
-			const overallTrack = document.createElement("div");
-			overallTrack.style.height = "6px";
-			overallTrack.style.background = "#e2e7ef";
-			overallTrack.style.borderRadius = "4px";
-			overallTrack.style.overflow = "hidden";
-			overallTrack.style.marginBottom = "10px";
-
-			const overallBar = document.createElement("div");
-			overallBar.style.height = "100%";
-			overallBar.style.width = "0%";
-			overallBar.style.background = "#2878e8";
-			overallBar.style.transition = "width 0.15s";
-
-			overallTrack.appendChild(overallBar);
-
-			const taskList = document.createElement("div");
-
-			queuePanel.appendChild(queueHeader);
-			queuePanel.appendChild(overallTrack);
-			queuePanel.appendChild(taskList);
-
-			const dropOverlay = document.createElement("div");
-			dropOverlay.style.position = "absolute";
-			dropOverlay.style.inset = "0";
-			dropOverlay.style.zIndex = "50";
-			dropOverlay.style.display = "none";
-			dropOverlay.style.alignItems = "center";
-			dropOverlay.style.justifyContent = "center";
-			dropOverlay.style.background = "rgba(40, 120, 232, 0.12)";
-			dropOverlay.style.border = "3px dashed #2878e8";
-			dropOverlay.style.borderRadius = "10px";
-			dropOverlay.style.pointerEvents = "none";
-
-			const dropContent = document.createElement("div");
-			dropContent.style.padding = "35px 55px";
-			dropContent.style.borderRadius = "12px";
-			dropContent.style.background = "rgba(255,255,255,0.95)";
-			dropContent.style.color = "#2878e8";
-			dropContent.style.textAlign = "center";
-			dropContent.style.boxShadow = "0 4px 20px rgba(0,0,0,0.12)";
-
-			const dropIcon = document.createElement("div");
-			dropIcon.textContent = "📁";
-			dropIcon.style.fontSize = "48px";
-			dropIcon.style.marginBottom = "12px";
-
-			const dropTitle = document.createElement("div");
-			dropTitle.textContent = "释放鼠标即可上传文件";
-			dropTitle.style.fontSize = "20px";
-			dropTitle.style.fontWeight = "bold";
-
-			const dropSubtitle = document.createElement("div");
-			dropSubtitle.textContent = "支持一次拖入多个文件";
-			dropSubtitle.style.fontSize = "13px";
-			dropSubtitle.style.marginTop = "10px";
-			dropSubtitle.style.color = "#8490a0";
-
-			dropContent.appendChild(dropIcon);
-			dropContent.appendChild(dropTitle);
-			dropContent.appendChild(dropSubtitle);
-			dropOverlay.appendChild(dropContent);
-
-			chatContainer.style.position = "relative";
-			chatContainer.appendChild(dropOverlay);
-
-			inputRow.insertBefore(fileButton, chatInputElement);
-			chatInputArea.appendChild(fileInput);
-			chatInputArea.insertBefore(queuePanel, inputRow);
-			chatInputArea.appendChild(fileStatus);
-
-			// ==================== 工具方法 ====================
-
-			function formatFileSize(size) {
-				size = Number(size || 0);
-
-				if (size < 1024) {
-					return size + " B";
-				}
-
-				if (size < 1024 * 1024) {
-					return (size / 1024).toFixed(1) + " KB";
-				}
-
-				return (size / 1024 / 1024).toFixed(2) + " MB";
-			}
-
-			function formatPercent(value) {
-				return Math.max(0, Math.min(100, value)).toFixed(0) + "%";
-			}
-
-			function setFileStatus(message, isError) {
-				fileStatus.textContent = message;
-				fileStatus.style.color = isError ? "#d44" : "#8490a0";
-			}
-
-			// ==================== 读取服务器上传配置 ====================
-
-			async function loadUploadConfig() {
-				try {
-					const response = await fetch("/api/files/config", {
-						method: "GET",
-						cache: "no-store"
-					});
-
-					const result = await response.json();
-
-					if (!response.ok || !result.success || !result.data) {
-						throw new Error(result.message || "读取上传配置失败");
-					}
-
-					const limitMB = Number(result.data.max_upload_size_mb);
-
-					if (!Number.isSafeInteger(limitMB) || limitMB <= 0) {
-						throw new Error("服务器返回的上传限制无效");
-					}
-
-					maxFileSizeMB = limitMB;
-
-					setFileStatus(
-							"支持拖拽文件到聊天窗口，单个文件最大 " + maxFileSizeMB + " MB",
-							false
-					);
-
-					fileButton.disabled = false;
-					fileInput.disabled = false;
-
-					console.log("服务器单文件上传限制：" + maxFileSizeMB + " MB");
-				} catch (error) {
-					maxFileSizeMB = 0;
-
-					setFileStatus("读取服务器上传限制失败，暂时无法上传文件", true);
-
-					fileButton.disabled = true;
-					fileInput.disabled = true;
-
-					console.error("读取上传配置失败：", error);
-				}
-			}
-
-			function createRequestId() {
-				requestCounter++;
-
-				if (window.crypto && typeof window.crypto.randomUUID === "function") {
-					return "file-" + window.crypto.randomUUID();
-				}
-
-				return "file-" + Date.now() + "-" + requestCounter;
-			}
-
-			function getCurrentTargetPeer() {
-				if (!activePeer) {
-					return null;
-				}
-
-				return {
-					id: Number(activePeer.id),
-					username: activePeer.username
-				};
-			}
-
-			function createTask(file, targetPeer) {
-				taskCounter++;
-
-				return {
-					id: taskCounter,
-					file: file,
-					targetPeer: targetPeer,
-					state: "queued",
-					loaded: 0,
-					xhr: null,
-					error: "",
-					messageId: null
-				};
-			}
-
-			function getTaskStatus(task) {
-				switch (task.state) {
-					case "queued":
-						return "等待上传";
-					case "uploading":
-						return "正在上传";
-					case "sending":
-						return "等待服务器确认";
-					case "success":
-						return "发送成功";
-					case "failed":
-						return "发送失败";
-					case "cancelled":
-						return "已取消";
-					default:
-						return "";
-				}
-			}
-
-			function getTaskPercent(task) {
-				if (task.state === "success" || task.state === "sending") {
-					return 100;
-				}
-
-				if (task.file.size <= 0) {
-					return 0;
-				}
-
-				return Math.min(100, task.loaded / task.file.size * 100);
-			}
-
-			// ==================== 队列 UI ====================
-
-			function renderQueue() {
-				queuePanel.style.display =
-						tasks.length > 0 && !queuePanelDismissed ? "block" : "none";
-
-				taskList.innerHTML = "";
-
-				let totalBytes = 0;
-				let completedBytes = 0;
-				let completedCount = 0;
-				let finishedCount = 0;
-
-				tasks.forEach(function (task) {
-					totalBytes += task.file.size;
-
-					completedBytes +=
-							task.state === "success" || task.state === "sending"
-									? task.file.size
-									: task.loaded;
-
-					if (task.state === "success") {
-						completedCount++;
-					}
-
-					if (task.state === "success" ||
-							task.state === "failed" ||
-							task.state === "cancelled") {
-						finishedCount++;
-					}
-
+			// 渲染在线用户列表
+			function renderOnlineUsers(users, count) {
+				currentOnlineUsers = users || [];
+				onlineUsersElement.innerHTML = "";
+				onlineCountElement.textContent = count + " 人";
+
+				currentOnlineUsers.forEach(user => {
 					const item = document.createElement("div");
-					item.style.padding = "8px 0";
-					item.style.borderBottom = "1px solid #e8edf4";
+					item.className = "online-user";
 
-					const top = document.createElement("div");
-					top.style.display = "flex";
-					top.style.alignItems = "center";
-					top.style.justifyContent = "space-between";
-					top.style.gap = "8px";
-
-					const name = document.createElement("div");
-					name.textContent = task.file.name;
-					name.title = task.file.name;
-					name.style.minWidth = "0";
-					name.style.flex = "1";
-					name.style.overflow = "hidden";
-					name.style.textOverflow = "ellipsis";
-					name.style.whiteSpace = "nowrap";
-					name.style.fontSize = "12px";
-
-					const status = document.createElement("span");
-					status.textContent = getTaskStatus(task);
-					status.style.flexShrink = "0";
-					status.style.fontSize = "11px";
-
-					if (task.state === "success") {
-						status.style.color = "#21864a";
-					} else if (task.state === "failed" || task.state === "cancelled") {
-						status.style.color = "#d44";
-					} else {
-						status.style.color = "#687386";
+					if (activePeer && Number(activePeer.id) === Number(user.id)) {
+						item.classList.add("active");
 					}
 
-					top.appendChild(name);
-					top.appendChild(status);
+					const dot = document.createElement("span");
+					dot.className = "online-dot";
 
-					const bottom = document.createElement("div");
-					bottom.style.display = "flex";
-					bottom.style.alignItems = "center";
-					bottom.style.gap = "8px";
-					bottom.style.marginTop = "6px";
+					const username = document.createElement("span");
+					username.className = "online-username";
+					username.textContent = user.username;
 
-					const track = document.createElement("div");
-					track.style.flex = "1";
-					track.style.width = "100%";
-					track.style.minWidth = "80px";
-					track.style.height = "6px";
-					track.style.background = "#e2e7ef";
-					track.style.borderRadius = "4px";
-					track.style.overflow = "hidden";
+					item.appendChild(dot);
+					item.appendChild(username);
 
-					const bar = document.createElement("div");
-					bar.style.height = "100%";
-					bar.style.width = getTaskPercent(task) + "%";
-					bar.style.transition = "width 0.15s";
-					bar.style.background =
-							task.state === "failed" || task.state === "cancelled"
-									? "#d44"
-									: task.state === "success" ? "#28a66a" : "#2878e8";
-
-					track.appendChild(bar);
-
-					const percent = document.createElement("span");
-					percent.textContent = formatPercent(getTaskPercent(task));
-					percent.style.width = "36px";
-					percent.style.textAlign = "right";
-					percent.style.fontSize = "11px";
-					percent.style.color = "#687386";
-
-					bottom.appendChild(track);
-					bottom.appendChild(percent);
-
-					const action = document.createElement("button");
-					action.type = "button";
-					action.textContent = "取消";
-					action.style.padding = "4px 9px";
-					action.style.fontSize = "11px";
-					action.style.flexShrink = "0";
-
-					if (task.state === "queued" || task.state === "uploading") {
-						action.addEventListener("click", function () {
-							cancelTask(task);
+					if (currentUser && Number(user.id) === Number(currentUser.id)) {
+						const me = document.createElement("span");
+						me.className = "online-me";
+						me.textContent = "我";
+						item.appendChild(me);
+					} else {
+						item.addEventListener("click", function () {
+							openPrivateChat(user);
 						});
-					} else {
-						action.disabled = true;
-						action.style.display = "none";
+
+						const unread = unreadCounts.get(Number(user.id)) || 0;
+						if (unread > 0) {
+							const badge = document.createElement("span");
+							badge.className = "unread-badge";
+							badge.textContent = unread > 99 ? "99+" : unread;
+							item.appendChild(badge);
+						}
 					}
 
-					bottom.appendChild(action);
-					item.appendChild(top);
-					item.appendChild(bottom);
+					onlineUsersElement.appendChild(item);
 
-					if (task.error) {
-						const error = document.createElement("div");
-						error.textContent = task.error;
-						error.style.marginTop = "5px";
-						error.style.fontSize = "11px";
-						error.style.color = "#d44";
-						error.style.overflowWrap = "anywhere";
-						item.appendChild(error);
-					}
-
-					taskList.appendChild(item);
-				});
-
-				const percent = totalBytes > 0 ? completedBytes / totalBytes * 100 : 0;
-				overallBar.style.width = formatPercent(percent);
-
-				queueProgress.textContent =
-						completedCount + "/" + tasks.length + " 成功 · " +
-						finishedCount + "/" + tasks.length + " 完成";
-
-				if (tasks.length > 0) {
-					setFileStatus(
-							"上传队列：" + finishedCount + "/" + tasks.length + " 个文件已处理",
-							tasks.some(task => task.state === "failed")
-					);
-				}
-			}
-
-			// ==================== ACK 处理 ====================
-
-			function finishPendingAck(requestId, error, ack) {
-				const pending = pendingAcks.get(requestId);
-
-				if (!pending) {
-					return;
-				}
-
-				clearTimeout(pending.timer);
-				pendingAcks.delete(requestId);
-
-				if (error) {
-					pending.reject(error);
-				} else {
-					pending.resolve(ack);
-				}
-			}
-
-			function failAllPendingAcks(message) {
-				for (const requestId of pendingAcks.keys()) {
-					finishPendingAck(requestId, new Error(message));
-				}
-			}
-
-			function attachAckListener(ws) {
-				if (!ws || attachedSockets.has(ws)) {
-					return;
-				}
-
-				attachedSockets.add(ws);
-
-				ws.addEventListener("message", function (event) {
-					let data;
-
-					try {
-						data = JSON.parse(event.data);
-					} catch (error) {
-						return;
-					}
-
-					if (data.type !== "file_message_ack" || !data.file_message_ack) {
-						return;
-					}
-
-					const ack = data.file_message_ack;
-
-					if (!ack.request_id) {
-						return;
-					}
-
-					if (ack.success) {
-						finishPendingAck(ack.request_id, null, ack);
-					} else {
-						finishPendingAck(
-								ack.request_id,
-								new Error(ack.error || "文件消息发送失败")
-						);
-					}
-				});
-
-				ws.addEventListener("close", function () {
-					failAllPendingAcks("WebSocket 已断开，文件消息发送失败");
-				});
-			}
-
-			function sendUploadedFile(fileData, targetPeer) {
-				return new Promise(function (resolve, reject) {
-					if (!socket || socket.readyState !== WebSocket.OPEN) {
-						reject(new Error("WebSocket 未连接"));
-						return;
-					}
-
-					const ws = socket;
-					attachAckListener(ws);
-
-					const requestId = createRequestId();
-
-					const payload = {
-						type: targetPeer ? "private_file_message" : "file_message",
-						request_id: requestId,
-						file_id: Number(fileData.id)
-					};
-
-					if (targetPeer) {
-						payload.receiver_id = Number(targetPeer.id);
-					}
-
-					const timer = setTimeout(function () {
-						finishPendingAck(
-								requestId,
-								new Error("等待服务器确认超时，文件消息发送失败")
-						);
-					}, ACK_TIMEOUT);
-
-					pendingAcks.set(requestId, {
-						resolve: resolve,
-						reject: reject,
-						timer: timer
-					});
-
-					try {
-						ws.send(JSON.stringify(payload));
-					} catch (error) {
-						finishPendingAck(
-								requestId,
-								new Error("WebSocket 发送失败：" + error.message)
-						);
+					const userId = Number(user.id);
+					if (!unreadLoadedUsers.has(userId)) {
+						unreadLoadedUsers.add(userId);
+						loadUnreadCount(userId);
 					}
 				});
 			}
 
-			// ==================== XHR 文件上传 ====================
-
-			function uploadFile(task) {
-				return new Promise(function (resolve, reject) {
-					const file = task.file;
-					const formData = new FormData();
-					formData.append("file", file);
-
-					const xhr = new XMLHttpRequest();
-					task.xhr = xhr;
-					task.state = "uploading";
-					task.loaded = 0;
-
-					xhr.open("POST", "/api/files/upload", true);
-
-					xhr.upload.onprogress = function (event) {
-						if (event.lengthComputable) {
-							task.loaded = event.loaded;
-						} else {
-							task.loaded = Math.min(event.loaded, file.size);
-						}
-
-						renderQueue();
-					};
-
-					xhr.onload = function () {
-						task.xhr = null;
-
-						if (task.state === "cancelled") {
-							reject(new Error("上传已取消"));
-							return;
-						}
-
-						let result;
-
-						try {
-							result = JSON.parse(xhr.responseText);
-						} catch (error) {
-							reject(new Error("服务器返回了无法识别的数据"));
-							return;
-						}
-
-						if (xhr.status < 200 || xhr.status >= 300 ||
-								!result.success || !result.data) {
-							reject(new Error(
-									result.message || "文件上传失败，HTTP " + xhr.status
-							));
-							return;
-						}
-
-						if (!result.data.id) {
-							reject(new Error("上传成功，但服务器没有返回文件 ID"));
-							return;
-						}
-
-						task.loaded = file.size;
-						resolve(result.data);
-					};
-
-					xhr.onerror = function () {
-						task.xhr = null;
-						reject(new Error("网络错误，文件上传失败"));
-					};
-
-					xhr.ontimeout = function () {
-						task.xhr = null;
-						reject(new Error("文件上传超时"));
-					};
-
-					xhr.onabort = function () {
-						task.xhr = null;
-						reject(new Error("上传已取消"));
-					};
-
-					xhr.timeout = 0;
-
-					renderQueue();
-
-					requestAnimationFrame(function () {
-						if (task.state !== "cancelled") {
-							xhr.send(formData);
-						}
-					});
-				});
+			function refreshOnlineUsers() {
+				renderOnlineUsers(currentOnlineUsers, currentOnlineUsers.length);
 			}
 
-			// ==================== 任务处理 ====================
-
-			async function processTask(task) {
+			async function loadUnreadCount(peerId) {
 				if (!currentUser) {
-					throw new Error("请先登录");
-				}
-
-				if (task.file.size <= 0) {
-					throw new Error("不能发送空文件");
-				}
-
-				if (maxFileSizeMB <= 0) {
-					throw new Error("尚未获取服务器上传限制");
-				}
-
-				if (task.file.size > maxFileSizeMB * 1024 * 1024) {
-					throw new Error("文件超过 " + maxFileSizeMB + " MB");
-				}
-
-				const fileData = await uploadFile(task);
-
-				if (task.state === "cancelled") {
-					throw new Error("上传已取消");
-				}
-
-				task.state = "sending";
-				task.loaded = task.file.size;
-				renderQueue();
-
-				// 进入 sending 阶段后，不再提供取消操作。
-				// 因为服务器可能已经保存文件消息，不能保证撤销成功。
-				const ack = await sendUploadedFile(fileData, task.targetPeer);
-
-				task.messageId = ack.message_id;
-				task.state = "success";
-				task.loaded = task.file.size;
-
-				renderQueue();
-			}
-
-			function cancelTask(task) {
-				if (task.state === "queued") {
-					task.state = "cancelled";
-					task.error = "用户取消";
-					renderQueue();
 					return;
 				}
 
-				if (task.state === "uploading" && task.xhr) {
-					task.state = "cancelled";
-					task.error = "用户取消上传";
-
-					const xhr = task.xhr;
-					task.xhr = null;
-
-					xhr.abort();
-					renderQueue();
-				}
-			}
-
-			async function processQueue() {
-				if (processingQueue) {
-					return;
-				}
-
-				processingQueue = true;
-				fileButton.disabled = true;
-
-				try {
-					while (true) {
-						const task = tasks.find(item => item.state === "queued");
-
-						if (!task) {
-							break;
-						}
-
-						try {
-							await processTask(task);
-						} catch (error) {
-							if (task.state !== "cancelled") {
-								task.state = "failed";
-								task.error = error.message || "发送失败";
-								console.error("文件发送失败：", task.file.name, error);
-							}
-						}
-
-						task.xhr = null;
-						renderQueue();
-					}
-				} finally {
-					processingQueue = false;
-					fileButton.disabled = maxFileSizeMB <= 0;
-					fileInput.disabled = maxFileSizeMB <= 0;
-
-					const successCount = tasks.filter(
-							task => task.state === "success"
-					).length;
-
-					const failedCount = tasks.filter(
-							task => task.state === "failed"
-					).length;
-
-					const cancelledCount = tasks.filter(
-							task => task.state === "cancelled"
-					).length;
-
-					setFileStatus(
-							"队列处理完成：成功 " + successCount +
-							" 个，失败 " + failedCount +
-							" 个，取消 " + cancelledCount + " 个",
-							failedCount > 0
-					);
-
-					renderQueue();
-				}
-			}
-
-			// ==================== 添加任务 ====================
-
-			function enqueueFiles(files) {
-				if (!currentUser) {
-					setFileStatus("请先登录", true);
-					return;
-				}
-
-				const fileList = Array.from(files || []);
-
-				if (fileList.length === 0) {
-					return;
-				}
-
-				if (maxFileSizeMB <= 0) {
-					setFileStatus("尚未获取服务器上传限制，请稍后再试", true);
-					return;
-				}
-
-				// 新一批文件入队时，重新显示上传进度面板。
-				queuePanelDismissed = false;
-
-				// 入队时固定目标，避免上传期间切换聊天窗口导致发错人。
-				const targetPeer = getCurrentTargetPeer();
-
-				fileList.forEach(function (file) {
-					tasks.push(createTask(file, targetPeer));
-				});
-
-				renderQueue();
-				processQueue();
-			}
-
-			// ==================== 文件选择 ====================
-
-			fileButton.addEventListener("click", function () {
-				fileInput.click();
-			});
-
-			fileInput.addEventListener("change", function () {
-				if (fileInput.files && fileInput.files.length > 0) {
-					enqueueFiles(fileInput.files);
-				}
-
-				fileInput.value = "";
-			});
-
-			// ==================== 拖拽上传 ====================
-
-			function hasDraggedFiles(event) {
-				const types = event.dataTransfer && event.dataTransfer.types;
-
-				if (!types) {
-					return false;
-				}
-
-				return Array.from(types).includes("Files");
-			}
-
-			document.addEventListener("dragover", function (event) {
-				if (hasDraggedFiles(event)) {
-					event.preventDefault();
-				}
-			});
-
-			document.addEventListener("drop", function (event) {
-				if (hasDraggedFiles(event)) {
-					event.preventDefault();
-				}
-			});
-
-			chatContainer.addEventListener("dragenter", function (event) {
-				if (!hasDraggedFiles(event)) {
-					return;
-				}
-
-				event.preventDefault();
-				dragCounter++;
-				dropOverlay.style.display = "flex";
-			});
-
-			chatContainer.addEventListener("dragover", function (event) {
-				if (!hasDraggedFiles(event)) {
-					return;
-				}
-
-				event.preventDefault();
-
-				if (event.dataTransfer) {
-					event.dataTransfer.dropEffect = "copy";
-				}
-
-				dropOverlay.style.display = "flex";
-			});
-
-			chatContainer.addEventListener("dragleave", function (event) {
-				if (!hasDraggedFiles(event)) {
-					return;
-				}
-
-				event.preventDefault();
-				dragCounter--;
-
-				if (dragCounter <= 0) {
-					dragCounter = 0;
-					dropOverlay.style.display = "none";
-				}
-			});
-
-			chatContainer.addEventListener("drop", function (event) {
-				if (!hasDraggedFiles(event)) {
-					return;
-				}
-
-				event.preventDefault();
-				event.stopPropagation();
-
-				dragCounter = 0;
-				dropOverlay.style.display = "none";
-
-				if (event.dataTransfer && event.dataTransfer.files.length > 0) {
-					enqueueFiles(event.dataTransfer.files);
-				}
-			});
-
-			// ==================== 文件消息删除 ====================
-
-			window.removeFileMessageFromChat = function (scope, messageId, eventData) {
-				const messageKey = (scope === "private" ? "p-" : "m-") + messageId;
-
-				renderedMessageIds.delete(messageKey);
-
-				const elements = chatMessages.querySelectorAll(".chat-message");
-
-				elements.forEach(function (element) {
-					if (element.dataset.messageId === String(messageId) &&
-							element.dataset.messageScope === scope) {
-						element.remove();
-					}
-				});
-
-				// 私聊文件消息被删除，如果当前用户是接收者，
-				// 则重新从服务端查询该私聊对象的未读数量。
-				if (scope === "private" &&
-						eventData &&
-						currentUser &&
-						Number(eventData.receiver_id) === Number(currentUser.id)) {
-
-					const peerId = Number(eventData.sender_id);
-
-					if (peerId > 0) {
-						unreadVersions.set(
-								peerId,
-								(unreadVersions.get(peerId) || 0) + 1
-						);
-
-						loadUnreadCount(peerId);
-					}
-				}
-			};
-
-			async function deleteFileMessage(message, isPrivate, button) {
-				const scope = isPrivate ? "private" : "public";
-				const messageId = Number(message.id);
-
-				if (!messageId ||
-						!confirm("确定删除这条文件消息吗？删除后无法恢复。")) {
-					return;
-				}
-
-				button.disabled = true;
-				button.textContent = "删除中...";
+				const version = unreadVersions.get(peerId) || 0;
 
 				try {
 					const response = await fetch(
-							"/api/files/messages/" + scope + "/" + messageId,
-							{
-								method: "DELETE"
-							}
+							"/api/private/unread?peer_id=" + encodeURIComponent(peerId)
 					);
+
+					if (!response.ok) {
+						return;
+					}
+
+					const result = await response.json();
+
+					if (!result.success || !result.data) {
+						return;
+					}
+
+					if (!currentUser || (unreadVersions.get(peerId) || 0) !== version) {
+						return;
+					}
+
+					const count = Number(result.data.count || 0);
+
+					if (count > 0) {
+						unreadCounts.set(peerId, count);
+					} else {
+						unreadCounts.delete(peerId);
+					}
+
+					refreshOnlineUsers();
+				} catch (error) {
+					console.error("查询私聊未读消息失败", error);
+				}
+			}
+
+
+			// 管理员用户管理
+			function setAdminMessage(message, isError) {
+				adminMessage.textContent = message || "";
+				adminMessage.className = isError ? "admin-message error" : "admin-message";
+			}
+
+			function formatAdminTime(timestamp) {
+				if (!timestamp) {
+					return "-";
+				}
+				const date = new Date(Number(timestamp) * 1000);
+				if (Number.isNaN(date.getTime())) {
+					return "-";
+				}
+				return date.toLocaleString();
+			}
+
+			async function adminRequest(url, options) {
+				const response = await fetch(url, options || {});
+				let result = {};
+				try {
+					result = await response.json();
+				} catch (error) {
+					throw new Error("服务器返回了无法识别的数据");
+				}
+				if (!response.ok || !result.success) {
+					throw new Error(result.message || ("请求失败，HTTP " + response.status));
+				}
+				return result;
+			}
+
+			function openAdminPanel() {
+				if (!currentUser || !currentUser.is_admin) {
+					return;
+				}
+				adminMask.style.display = "flex";
+				setAdminMessage("", false);
+				loadAdminUsers();
+			}
+
+			function closeAdminPanel() {
+				adminMask.style.display = "none";
+			}
+
+			async function loadAdminUsers() {
+				if (!currentUser || !currentUser.is_admin) {
+					return;
+				}
+				adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">正在加载...</td></tr>';
+				setAdminMessage("", false);
+				try {
+					const result = await adminRequest("/api/admin/users");
+					const users = result.data && Array.isArray(result.data.users)
+							? result.data.users
+							: (Array.isArray(result.data) ? result.data : []);
+					renderAdminUsers(users);
+				} catch (error) {
+					adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">加载失败</td></tr>';
+					adminUserCount.textContent = "用户列表";
+					setAdminMessage(error.message, true);
+				}
+			}
+
+			function renderAdminUsers(users) {
+				adminUsersBody.innerHTML = "";
+				adminUserCount.textContent = "共 " + users.length + " 个用户";
+				if (users.length === 0) {
+					adminUsersBody.innerHTML = '<tr><td class="admin-empty" colspan="6">暂无用户</td></tr>';
+					return;
+				}
+
+				users.forEach(user => {
+					const row = document.createElement("tr");
+
+					const idCell = document.createElement("td");
+					idCell.textContent = user.id;
+
+					const nameCell = document.createElement("td");
+					nameCell.textContent = user.username;
+
+					const roleCell = document.createElement("td");
+					roleCell.textContent = user.is_admin ? "管理员" : "普通用户";
+					if (user.is_admin) {
+						roleCell.className = "admin-role";
+					}
+
+					const statusCell = document.createElement("td");
+					const status = document.createElement("span");
+					status.className = "admin-status " + (user.is_active ? "active" : "inactive");
+					status.textContent = user.is_active ? "已启用" : "已禁用";
+					statusCell.appendChild(status);
+
+					const createdCell = document.createElement("td");
+					createdCell.textContent = formatAdminTime(user.created_at);
+
+					const actionCell = document.createElement("td");
+					const resetButton = document.createElement("button");
+					resetButton.type = "button";
+					resetButton.className = "admin-action-button secondary";
+					resetButton.textContent = "重置密码";
+					resetButton.addEventListener("click", function () {
+						resetAdminUserPassword(user);
+					});
+					actionCell.appendChild(resetButton);
+
+					if (Number(user.id) !== Number(currentUser.id)) {
+						const statusButton = document.createElement("button");
+						statusButton.type = "button";
+						statusButton.className = "admin-action-button " + (user.is_active ? "danger" : "secondary");
+						statusButton.textContent = user.is_active ? "禁用" : "启用";
+						statusButton.addEventListener("click", function () {
+							setAdminUserStatus(user, !user.is_active);
+						});
+						actionCell.appendChild(statusButton);
+					} else if (Number(user.id) === Number(currentUser.id)) {
+						const selfLabel = document.createElement("span");
+						selfLabel.textContent = "当前账号";
+						selfLabel.style.color = "#8490a0";
+						actionCell.appendChild(selfLabel);
+					}
+
+					row.appendChild(idCell);
+					row.appendChild(nameCell);
+					row.appendChild(roleCell);
+					row.appendChild(statusCell);
+					row.appendChild(createdCell);
+					row.appendChild(actionCell);
+					adminUsersBody.appendChild(row);
+				});
+			}
+
+			async function createAdminUser(event) {
+				event.preventDefault();
+				const username = document.getElementById("adminNewUsername").value.trim();
+				const password = document.getElementById("adminNewPassword").value;
+				if (username.length < 2 || username.length > 32) {
+					setAdminMessage("用户名长度必须为 2–32 个字符", true);
+					return;
+				}
+				if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
+					setAdminMessage("密码长度必须为 8–72 个字节", true);
+					return;
+				}
+
+				adminCreateButton.disabled = true;
+				try {
+					await adminRequest("/api/admin/users", {
+						method: "POST",
+						headers: {"Content-Type": "application/json"},
+						body: JSON.stringify({username: username, password: password})
+					});
+					adminCreateForm.reset();
+					setAdminMessage("用户创建成功", false);
+					await loadAdminUsers();
+				} catch (error) {
+					setAdminMessage(error.message, true);
+				} finally {
+					adminCreateButton.disabled = false;
+				}
+			}
+
+			async function setAdminUserStatus(user, active) {
+				const action = active ? "启用" : "禁用";
+				if (!confirm("确定要" + action + "用户「" + user.username + "」吗？")) {
+					return;
+				}
+				try {
+					await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/status", {
+						method: "POST",
+						headers: {"Content-Type": "application/json"},
+						body: JSON.stringify({is_active: active})
+					});
+					setAdminMessage("用户已" + action, false);
+					await loadAdminUsers();
+				} catch (error) {
+					setAdminMessage(error.message, true);
+				}
+			}
+
+			async function resetAdminUserPassword(user) {
+				const password = prompt("请输入用户「" + user.username + "」的新密码（8–72 个字符）：");
+				if (password === null) {
+					return;
+				}
+				if (password.length < 8 || new TextEncoder().encode(password).length > 72) {
+					setAdminMessage("密码长度必须为 8–72 个字节", true);
+					return;
+				}
+				if (!confirm("确定重置用户「" + user.username + "」的密码吗？")) {
+					return;
+				}
+				try {
+					await adminRequest("/api/admin/users/" + encodeURIComponent(user.id) + "/password", {
+						method: "POST",
+						headers: {"Content-Type": "application/json"},
+						body: JSON.stringify({password: password})
+					});
+					setAdminMessage("密码重置成功，该用户需要使用新密码重新登录", false);
+				} catch (error) {
+					setAdminMessage(error.message, true);
+				}
+			}
+
+			adminUsersButton.addEventListener("click", openAdminPanel);
+			document.getElementById("adminCloseButton").addEventListener("click", closeAdminPanel);
+			document.getElementById("adminRefreshButton").addEventListener("click", loadAdminUsers);
+			adminCreateForm.addEventListener("submit", createAdminUser);
+			adminMask.addEventListener("click", function (event) {
+				if (event.target === adminMask) {
+					closeAdminPanel();
+				}
+			});
+
+			async function checkLogin() {
+				try {
+					const response = await fetch("/api/me");
+					const result = await response.json();
+
+					if (response.ok && result.success) {
+						currentUser = result.data;
+						showChat();
+
+						await loadInitialMessages();
+						connectWebSocket();
+
+						chatInput.focus();
+					} else {
+						showLogin();
+					}
+				} catch (error) {
+					loginMessage.textContent = "无法连接服务器";
+				}
+			}
+
+			loginForm.addEventListener("submit", async function (event) {
+				event.preventDefault();
+
+				loginButton.disabled = true;
+				loginMessage.textContent = "";
+
+				try {
+					const response = await fetch("/api/login", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json"
+						},
+						body: JSON.stringify({
+							username: document.getElementById("username").value,
+							password: document.getElementById("password").value
+						})
+					});
 
 					const result = await response.json();
 
 					if (!response.ok || !result.success) {
-						throw new Error(result.message || "删除文件消息失败");
+						loginMessage.textContent = result.message || "登录失败";
+						return;
 					}
 
-					window.removeFileMessageFromChat(scope, messageId, result.data);
+					currentUser = result.data;
+					document.getElementById("password").value = "";
+
+					resetChatState();
+					showChat();
+
+					await loadInitialMessages();
+					connectWebSocket();
+
+					chatInput.focus();
 				} catch (error) {
-					alert(error.message || "删除文件消息失败");
-					button.disabled = false;
-					button.textContent = "×";
+					loginMessage.textContent = "无法连接服务器";
+				} finally {
+					loginButton.disabled = false;
+				}
+			});
+
+			// 加载公共聊天室初始消息
+			async function loadInitialMessages() {
+				const token = ++viewToken;
+
+				activePeer = null;
+				chatTitle.textContent = "QChat · 公共聊天室";
+				chatInput.placeholder = "输入消息，按 Enter 发送";
+				publicChatItem.classList.add("active");
+
+				chatMessages.innerHTML = "";
+				renderedMessageIds.clear();
+
+				oldestMessageId = null;
+				hasMoreHistory = true;
+				historyButton.disabled = false;
+
+				const response = await fetch("/api/messages");
+
+				if (token !== viewToken || !response.ok) {
+					return;
+				}
+
+				const result = await response.json();
+				const messages = result.data.messages || [];
+
+				messages.forEach(message => {
+					appendMessage(message, false);
+				});
+
+				if (messages.length > 0) {
+					oldestMessageId = messages[0].id;
+					scrollToBottom();
+				}
+
+				if (messages.length < 50) {
+					hasMoreHistory = false;
+					historyButton.disabled = true;
 				}
 			}
 
-			// ==================== 文件消息渲染 ====================
+			// 切换到公共聊天室
+			async function switchToPublicChat() {
+				await loadInitialMessages();
 
-			const originalCreateMessageElement = createMessageElement;
+				Array.from(onlineUsersElement.children).forEach(item => {
+					item.classList.remove("active");
+				});
 
-			createMessageElement = function (message, isPrivate) {
-				let fileData = null;
+				chatInput.focus();
+			}
+
+			// 打开私聊
+			async function openPrivateChat(user) {
+				if (!user || !currentUser ||
+						Number(user.id) === Number(currentUser.id)) {
+					return;
+				}
+
+				const token = ++viewToken;
+
+				activePeer = user;
+
+				chatTitle.textContent = "私聊 · " + user.username;
+				chatInput.placeholder = "发送给 " + user.username + "，按 Enter 发送";
+
+				publicChatItem.classList.remove("active");
+
+				Array.from(onlineUsersElement.children).forEach(item => {
+					item.classList.remove("active");
+				});
+
+				const selected = Array.from(onlineUsersElement.children).find(item => {
+					const name = item.querySelector(".online-username");
+					return name && name.textContent === user.username;
+				});
+
+				if (selected) {
+					selected.classList.add("active");
+				}
+
+				unreadCounts.delete(Number(user.id));
+				unreadVersions.set(Number(user.id), (unreadVersions.get(Number(user.id)) || 0) + 1);
+				refreshOnlineUsers();
+
+				chatMessages.innerHTML = "";
+				renderedMessageIds.clear();
+
+				oldestMessageId = null;
+				hasMoreHistory = true;
+				historyButton.disabled = false;
+
+				await loadPrivateMessages(null, token);
+
+				if (token === viewToken) {
+					chatInput.focus();
+				}
+			}
+
+			// 加载私聊历史消息
+			async function loadPrivateMessages(beforeId, token) {
+				if (!activePeer) {
+					return;
+				}
+
+				const peerId = Number(activePeer.id);
+
+				const url = "/api/private/messages?peer_id=" + encodeURIComponent(peerId)
+						+ (beforeId ? "&before_id=" + encodeURIComponent(beforeId) : "");
 
 				try {
-					const parsed = JSON.parse(message.content);
+					const response = await fetch(url);
 
-					if (parsed && parsed.type === "file") {
-						fileData = parsed;
+					if (token !== viewToken || !response.ok) {
+						return;
+					}
+
+					const result = await response.json();
+
+					if (!result.success || !result.data) {
+						return;
+					}
+
+					if (token !== viewToken) {
+						return;
+					}
+
+					const messages = result.data.messages || [];
+
+					if (beforeId) {
+						messages.forEach(message => {
+							prependMessage(message, true);
+						});
+					} else {
+						messages.forEach(message => {
+							appendMessage(message, true);
+						});
+					}
+
+					if (messages.length > 0) {
+						oldestMessageId = messages[0].id;
+
+						if (!beforeId) {
+							scrollToBottom();
+						}
+					}
+
+					hasMoreHistory = messages.length >= 50;
+					historyButton.disabled = !hasMoreHistory;
+
+					unreadCounts.delete(peerId);
+					refreshOnlineUsers();
+				} catch (error) {
+					console.error("加载私聊历史异常", error);
+				}
+			}
+
+			// 加载更早的消息
+			async function loadOlderMessages() {
+				if (loadingHistory || !hasMoreHistory || oldestMessageId === null) {
+					return;
+				}
+
+				loadingHistory = true;
+				historyButton.disabled = true;
+
+				const oldHeight = chatMessages.scrollHeight;
+				const oldTop = chatMessages.scrollTop;
+				const token = viewToken;
+
+				try {
+					if (activePeer) {
+						await loadPrivateMessages(oldestMessageId, token);
+					} else {
+						const response = await fetch(
+								"/api/messages?before_id=" + encodeURIComponent(oldestMessageId)
+						);
+
+						if (!response.ok || token !== viewToken) {
+							return;
+						}
+
+						const result = await response.json();
+						const messages = result.data.messages || [];
+
+						if (messages.length === 0) {
+							hasMoreHistory = false;
+							return;
+						}
+
+						messages.forEach(message => {
+							prependMessage(message, false);
+						});
+
+						oldestMessageId = messages[0].id;
+
+						if (messages.length < 50) {
+							hasMoreHistory = false;
+						}
+					}
+
+					if (token === viewToken) {
+						const newHeight = chatMessages.scrollHeight;
+						chatMessages.scrollTop = oldTop + (newHeight - oldHeight);
 					}
 				} catch (error) {
-					// 普通文本消息。
+					console.error("加载更早消息失败", error);
+				} finally {
+					loadingHistory = false;
+					historyButton.disabled = !hasMoreHistory;
+				}
+			}
+
+			// 追加消息，使用消息类型和 ID 去重
+			function appendMessage(message, isPrivate) {
+				const key = (isPrivate ? "p-" : "m-") + message.id;
+
+				if (renderedMessageIds.has(key)) {
+					return;
 				}
 
-				if (!fileData) {
-					return originalCreateMessageElement(message, isPrivate);
+				renderedMessageIds.add(key);
+
+				const element = createMessageElement(message, isPrivate);
+				chatMessages.appendChild(element);
+
+				if (oldestMessageId === null || Number(message.id) < Number(oldestMessageId)) {
+					oldestMessageId = message.id;
+				}
+			}
+
+			// 在消息列表顶部插入历史消息
+			function prependMessage(message, isPrivate) {
+				const key = (isPrivate ? "p-" : "m-") + message.id;
+
+				if (renderedMessageIds.has(key)) {
+					return;
 				}
 
+				renderedMessageIds.add(key);
+
+				const element = createMessageElement(message, isPrivate);
+				chatMessages.insertBefore(element, chatMessages.firstChild);
+			}
+
+			// 创建消息 DOM
+			function createMessageElement(message, isPrivate) {
 				const wrapper = document.createElement("div");
 				wrapper.className = "chat-message";
 
 				const senderId = isPrivate ? message.sender_id : message.user_id;
 				const senderName = isPrivate ? message.sender_name : message.username;
-				const scope = isPrivate ? "private" : "public";
-
-				wrapper.dataset.messageId = String(message.id);
-				wrapper.dataset.messageScope = scope;
 
 				if (currentUser && Number(senderId) === Number(currentUser.id)) {
 					wrapper.classList.add("mine");
@@ -2746,149 +1442,1465 @@
 				const info = document.createElement("div");
 				info.className = "message-info";
 
-				const date = new Date(Number(message.created_at) * 1000);
+				const date = new Date(message.created_at * 1000);
 				info.textContent = senderName + " · " + date.toLocaleString();
 
-				const card = document.createElement("div");
-				card.className = "message-content";
-				card.style.display = "inline-flex";
-				card.style.flexDirection = "column";
-				card.style.alignItems = "flex-start";
-				card.style.gap = "8px";
-				card.style.minWidth = "220px";
-				card.style.maxWidth = "min(420px, 100%)";
+				const content = document.createElement("div");
+				content.className = "message-content";
+				content.textContent = message.content;
 
-				const contentType = String(fileData.content_type || "").toLowerCase();
-				const isImage = previewImageTypes.has(contentType);
-				const fileId = encodeURIComponent(fileData.file_id);
-				const downloadUrl = "/api/files/" + fileId;
-
-				const details = document.createElement("div");
-				details.style.display = "flex";
-				details.style.flexDirection = "column";
-				details.style.minWidth = "0";
-				details.style.width = "100%";
-
-				const fileName = document.createElement("div");
-				fileName.textContent = fileData.original_name || "未知文件";
-				fileName.style.fontWeight = "bold";
-				fileName.style.overflowWrap = "anywhere";
-
-				const fileSize = document.createElement("div");
-				fileSize.textContent = formatFileSize(fileData.size);
-				fileSize.style.fontSize = "12px";
-				fileSize.style.opacity = "0.8";
-				fileSize.style.marginTop = "4px";
-
-				// 图片缩略图
-				if (isImage) {
-					const imageUrl = downloadUrl + "?inline=1";
-
-					const thumbnail = document.createElement("img");
-					thumbnail.src = imageUrl;
-					thumbnail.alt = fileData.original_name || "图片";
-					thumbnail.loading = "lazy";
-					thumbnail.style.display = "block";
-					thumbnail.style.maxWidth = "100%";
-					thumbnail.style.maxHeight = "240px";
-					thumbnail.style.objectFit = "contain";
-					thumbnail.style.borderRadius = "6px";
-					thumbnail.style.cursor = "zoom-in";
-					thumbnail.style.background = "rgba(0,0,0,0.04)";
-
-					thumbnail.addEventListener("click", function () {
-						openImagePreview(imageUrl);
-					});
-
-					thumbnail.addEventListener("error", function () {
-						thumbnail.style.display = "none";
-
-						const errorText = document.createElement("div");
-						errorText.textContent = "图片预览加载失败，请尝试下载";
-						errorText.style.fontSize = "12px";
-						errorText.style.color = "#d44";
-
-						details.insertBefore(errorText, fileName);
-					});
-
-					card.appendChild(thumbnail);
-				}
-
-				const downloadLink = document.createElement("a");
-				downloadLink.textContent = "下载文件";
-				downloadLink.href = downloadUrl;
-				downloadLink.download = fileData.original_name || "download";
-				downloadLink.style.display = "inline-block";
-				downloadLink.style.marginTop = "6px";
-				downloadLink.style.fontSize = "12px";
-				downloadLink.style.color = "inherit";
-
-				details.appendChild(fileName);
-				details.appendChild(fileSize);
-				details.appendChild(downloadLink);
-
-				// 只有发送者本人或管理员显示右上角删除叉号。
-				const isOwner = currentUser &&
-						Number(senderId) === Number(currentUser.id);
-
-				const isAdmin = currentUser && currentUser.is_admin;
-
-				if (isOwner || isAdmin) {
-					card.style.position = "relative";
-					card.style.paddingTop = "24px";
-
-					const deleteButton = document.createElement("button");
-					deleteButton.type = "button";
-					deleteButton.textContent = "×";
-					deleteButton.title = "删除文件消息";
-					deleteButton.setAttribute("aria-label", "删除文件消息");
-
-					deleteButton.style.position = "absolute";
-					deleteButton.style.top = "4px";
-					deleteButton.style.right = "6px";
-					deleteButton.style.width = "24px";
-					deleteButton.style.height = "24px";
-					deleteButton.style.padding = "0";
-					deleteButton.style.border = "none";
-					deleteButton.style.borderRadius = "50%";
-					deleteButton.style.background = "transparent";
-					deleteButton.style.color = "#999";
-					deleteButton.style.fontSize = "22px";
-					deleteButton.style.lineHeight = "22px";
-					deleteButton.style.cursor = "pointer";
-
-					deleteButton.addEventListener("mouseenter", function () {
-						deleteButton.style.background = "#d94b4b";
-						deleteButton.style.color = "#fff";
-					});
-
-					deleteButton.addEventListener("mouseleave", function () {
-						deleteButton.style.background = "transparent";
-						deleteButton.style.color = "#999";
-					});
-
-					deleteButton.addEventListener("click", function () {
-						deleteFileMessage(message, isPrivate, deleteButton);
-					});
-
-					card.appendChild(deleteButton);
-				}
-
-				card.appendChild(details);
 				wrapper.appendChild(info);
-				wrapper.appendChild(card);
+				wrapper.appendChild(content);
 
 				return wrapper;
-			};
+			}
 
-			// ==================== 初始化 ====================
+			// WebSocket 连接
+			function connectWebSocket() {
+				if (!currentUser) {
+					return;
+				}
 
-			loadUploadConfig();
+				if (socket &&
+						(socket.readyState === WebSocket.OPEN ||
+								socket.readyState === WebSocket.CONNECTING)) {
+					return;
+				}
 
-			console.log("QChat 0.8 文件上传及图片预览初始化完成");
-		})();
-	</script>
+				if (socketConnecting) {
+					return;
+				}
+
+				socketConnecting = true;
+
+				const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+				const url = protocol + "//" + location.host + "/ws/chat";
+
+				const newSocket = new WebSocket(url);
+				socket = newSocket;
+
+				newSocket.onopen = function () {
+					socketConnecting = false;
+
+					if (socket !== newSocket) {
+						newSocket.close();
+						return;
+					}
+
+					connectionStatus.textContent = "● 已连接";
+					connectionStatus.className = "connection-status connected";
+				};
+
+				newSocket.onmessage = function (event) {
+					if (socket !== newSocket) {
+						return;
+					}
+
+					try {
+						const data = JSON.parse(event.data);
+
+						if (data.type === "message" && data.message) {
+							if (!activePeer) {
+								appendMessage(data.message, false);
+								scrollToBottom();
+							}
+						} else if (data.type === "private_message" && data.private_message) {
+							handlePrivateMessage(data.private_message);
+						} else if (data.type === "online_users") {
+							renderOnlineUsers(data.users || [], data.count || 0);
+						} else if (data.type === "file_message_deleted") {
+							if (window.removeFileMessageFromChat) {
+								window.removeFileMessageFromChat(data.scope, data.message_id, data);
+							}
+						} else if (data.type === "error") {
+							console.error("服务器消息错误：", data.error);
+							connectionStatus.textContent = "● " + (data.error || "消息发送失败");
+							connectionStatus.className = "connection-status disconnected";
+						}
+					} catch (error) {
+						console.error("消息解析失败", error);
+					}
+				};
+
+				newSocket.onclose = function () {
+					socketConnecting = false;
+
+					if (socket === newSocket) {
+						socket = null;
+						connectionStatus.textContent = "● 连接已断开";
+						connectionStatus.className = "connection-status disconnected";
+					}
+				};
+
+				newSocket.onerror = function () {
+					socketConnecting = false;
+
+					if (socket === newSocket) {
+						connectionStatus.textContent = "● 连接错误";
+						connectionStatus.className = "connection-status disconnected";
+					}
+				};
+			}
+
+			// 接收私聊消息
+			function handlePrivateMessage(message) {
+				if (!currentUser) {
+					return;
+				}
+
+				const currentId = Number(currentUser.id);
+				const senderId = Number(message.sender_id);
+				const receiverId = Number(message.receiver_id);
+
+				const peerId = senderId === currentId ? receiverId : senderId;
+
+				// 当前正在与消息另一方聊天
+				if (activePeer && Number(activePeer.id) === peerId) {
+					appendMessage(message, true);
+					scrollToBottom();
+
+					if (receiverId === currentId) {
+						unreadCounts.delete(peerId);
+						unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
+					}
+
+					refreshOnlineUsers();
+					return;
+				}
+
+				// 当前用户是接收者，但没有打开对应私聊窗口
+				if (receiverId === currentId) {
+					const count = unreadCounts.get(peerId) || 0;
+					unreadCounts.set(peerId, count + 1);
+					unreadVersions.set(peerId, (unreadVersions.get(peerId) || 0) + 1);
+
+					refreshOnlineUsers();
+				}
+			}
+
+			// 发送消息
+			function sendMessage() {
+				const content = chatInput.value.trim();
+
+				if (!content) {
+					return;
+				}
+
+				if (!socket || socket.readyState !== WebSocket.OPEN) {
+					connectionStatus.textContent = "● WebSocket 未连接";
+					connectionStatus.className = "connection-status disconnected";
+					return;
+				}
+
+				if (activePeer) {
+					socket.send(JSON.stringify({
+						type: "private_message",
+						receiver_id: Number(activePeer.id),
+						content: content
+					}));
+				} else {
+					socket.send(JSON.stringify({
+						type: "message",
+						content: content
+					}));
+				}
+
+				chatInput.value = "";
+				chatInput.focus();
+			}
+
+			sendButton.addEventListener("click", sendMessage);
+
+			chatInput.addEventListener("keydown", function (event) {
+				if (event.key === "Enter" && !event.shiftKey) {
+					event.preventDefault();
+					sendMessage();
+				}
+			});
+
+			historyButton.addEventListener("click", loadOlderMessages);
+
+			publicChatItem.addEventListener("click", switchToPublicChat);
+
+			function scrollToBottom() {
+				requestAnimationFrame(function () {
+					chatMessages.scrollTop = chatMessages.scrollHeight;
+				});
+			}
+
+			// 退出登录
+			document.getElementById("logoutButton").addEventListener("click", async function () {
+				if (socket) {
+					const oldSocket = socket;
+					socket = null;
+					oldSocket.close();
+				}
+
+				socketConnecting = false;
+
+				try {
+					await fetch("/api/logout", {
+						method: "POST"
+					});
+				} catch (error) {
+					console.error("退出登录请求失败", error);
+				}
+
+				currentUser = null;
+				adminMask.style.display = "none";
+				adminUsersButton.style.display = "none";
+				resetChatState();
+
+				connectionStatus.textContent = "正在连接...";
+				connectionStatus.className = "connection-status";
+
+				showLogin();
+			});
+
+			checkLogin();
+		</script>
 
 
-</body>
+		<script>
+			(function () {
+				"use strict";
+
+				const inputRow = document.querySelector(".chat-input-row");
+				const chatInputElement = document.getElementById("chatInput");
+				const chatInputArea = document.querySelector(".chat-input-area");
+				const chatContainer = document.getElementById("chatContainer");
+
+				if (!inputRow || !chatInputElement || !chatInputArea || !chatContainer) {
+					console.error("文件上传初始化失败：找不到聊天界面元素");
+					return;
+				}
+
+				// ==================== 配置 ====================
+
+				let maxFileSizeMB = 0;
+
+				const ACK_TIMEOUT = 20000;
+				const pendingAcks = new Map();
+				const attachedSockets = new WeakSet();
+
+				let requestCounter = 0;
+				let taskCounter = 0;
+				let processingQueue = false;
+				let dragCounter = 0;
+				let queuePanelDismissed = false;
+
+				const tasks = [];
+
+				// ==================== 图片预览 ====================
+
+				const previewImageTypes = new Set([
+					"image/jpeg",
+					"image/png",
+					"image/gif",
+					"image/webp"
+				]);
+
+				const imagePreviewMask = document.createElement("div");
+				imagePreviewMask.style.position = "fixed";
+				imagePreviewMask.style.inset = "0";
+				imagePreviewMask.style.zIndex = "2000";
+				imagePreviewMask.style.display = "none";
+				imagePreviewMask.style.alignItems = "center";
+				imagePreviewMask.style.justifyContent = "center";
+				imagePreviewMask.style.padding = "30px";
+				imagePreviewMask.style.background = "rgba(0, 0, 0, 0.85)";
+				imagePreviewMask.style.cursor = "zoom-out";
+
+				const imagePreview = document.createElement("img");
+				imagePreview.style.display = "block";
+				imagePreview.style.maxWidth = "95vw";
+				imagePreview.style.maxHeight = "90vh";
+				imagePreview.style.objectFit = "contain";
+				imagePreview.style.borderRadius = "6px";
+				imagePreview.style.boxShadow = "0 4px 30px rgba(0,0,0,0.4)";
+				imagePreview.style.cursor = "default";
+
+				const imagePreviewClose = document.createElement("button");
+				imagePreviewClose.type = "button";
+				imagePreviewClose.textContent = "关闭";
+				imagePreviewClose.style.position = "absolute";
+				imagePreviewClose.style.top = "20px";
+				imagePreviewClose.style.right = "25px";
+				imagePreviewClose.style.padding = "8px 16px";
+				imagePreviewClose.style.background = "rgba(255,255,255,0.2)";
+				imagePreviewClose.style.color = "#fff";
+				imagePreviewClose.style.fontSize = "14px";
+				imagePreviewClose.style.cursor = "pointer";
+
+				imagePreviewMask.appendChild(imagePreview);
+				imagePreviewMask.appendChild(imagePreviewClose);
+				document.body.appendChild(imagePreviewMask);
+
+				function closeImagePreview() {
+					imagePreviewMask.style.display = "none";
+					imagePreview.removeAttribute("src");
+				}
+
+				function openImagePreview(url) {
+					imagePreview.src = url;
+					imagePreviewMask.style.display = "flex";
+				}
+
+				imagePreviewMask.addEventListener("click", function (event) {
+					if (event.target === imagePreviewMask) {
+						closeImagePreview();
+					}
+				});
+
+				imagePreviewClose.addEventListener("click", closeImagePreview);
+
+				imagePreview.addEventListener("click", function (event) {
+					event.stopPropagation();
+				});
+
+				document.addEventListener("keydown", function (event) {
+					if (event.key === "Escape" && imagePreviewMask.style.display === "flex") {
+						closeImagePreview();
+					}
+				});
+
+				// ==================== UI 初始化 ====================
+
+				const fileButton = document.createElement("button");
+				fileButton.type = "button";
+				fileButton.textContent = "文件";
+				fileButton.style.width = "70px";
+				fileButton.style.height = "40px";
+				fileButton.style.flexShrink = "0";
+				fileButton.title = "选择文件上传";
+				fileButton.disabled = true;
+
+				const fileInput = document.createElement("input");
+				fileInput.type = "file";
+				fileInput.multiple = true;
+				fileInput.style.display = "none";
+				fileInput.disabled = true;
+
+				const fileStatus = document.createElement("div");
+				fileStatus.style.marginTop = "6px";
+				fileStatus.style.fontSize = "12px";
+				fileStatus.style.color = "#8490a0";
+				fileStatus.textContent = "正在读取服务器上传限制...";
+
+				const queuePanel = document.createElement("div");
+				queuePanel.style.display = "none";
+				queuePanel.style.marginTop = "10px";
+				queuePanel.style.padding = "10px";
+				queuePanel.style.background = "#f7f9fc";
+				queuePanel.style.border = "1px solid #e5e8ed";
+				queuePanel.style.borderRadius = "8px";
+				queuePanel.style.maxHeight = "220px";
+				queuePanel.style.overflowY = "auto";
+
+				const queueHeader = document.createElement("div");
+				queueHeader.style.display = "flex";
+				queueHeader.style.justifyContent = "space-between";
+				queueHeader.style.alignItems = "center";
+				queueHeader.style.marginBottom = "8px";
+				queueHeader.style.fontSize = "12px";
+				queueHeader.style.fontWeight = "bold";
+
+				const queueTitle = document.createElement("span");
+				queueTitle.textContent = "上传队列";
+
+				const queueProgress = document.createElement("span");
+				queueProgress.style.color = "#2878e8";
+
+				const queueHeaderRight = document.createElement("div");
+				queueHeaderRight.style.display = "flex";
+				queueHeaderRight.style.alignItems = "center";
+				queueHeaderRight.style.gap = "10px";
+
+				const queueCloseButton = document.createElement("button");
+				queueCloseButton.type = "button";
+				queueCloseButton.textContent = "×";
+				queueCloseButton.title = "关闭上传进度";
+				queueCloseButton.setAttribute("aria-label", "关闭上传进度");
+				queueCloseButton.style.width = "22px";
+				queueCloseButton.style.height = "22px";
+				queueCloseButton.style.padding = "0";
+				queueCloseButton.style.border = "none";
+				queueCloseButton.style.borderRadius = "50%";
+				queueCloseButton.style.background = "transparent";
+				queueCloseButton.style.color = "#8490a0";
+				queueCloseButton.style.fontSize = "20px";
+				queueCloseButton.style.lineHeight = "20px";
+				queueCloseButton.style.cursor = "pointer";
+				queueCloseButton.style.flexShrink = "0";
+
+				queueCloseButton.addEventListener("mouseenter", function () {
+					queueCloseButton.style.background = "#d94b4b";
+					queueCloseButton.style.color = "#fff";
+				});
+
+				queueCloseButton.addEventListener("mouseleave", function () {
+					queueCloseButton.style.background = "transparent";
+					queueCloseButton.style.color = "#8490a0";
+				});
+
+				queueCloseButton.addEventListener("click", function () {
+					queuePanelDismissed = true;
+					queuePanel.style.display = "none";
+				});
+
+				queueHeaderRight.appendChild(queueProgress);
+				queueHeaderRight.appendChild(queueCloseButton);
+				queueHeader.appendChild(queueTitle);
+				queueHeader.appendChild(queueHeaderRight);
+
+				const overallTrack = document.createElement("div");
+				overallTrack.style.height = "6px";
+				overallTrack.style.background = "#e2e7ef";
+				overallTrack.style.borderRadius = "4px";
+				overallTrack.style.overflow = "hidden";
+				overallTrack.style.marginBottom = "10px";
+
+				const overallBar = document.createElement("div");
+				overallBar.style.height = "100%";
+				overallBar.style.width = "0%";
+				overallBar.style.background = "#2878e8";
+				overallBar.style.transition = "width 0.15s";
+
+				overallTrack.appendChild(overallBar);
+
+				const taskList = document.createElement("div");
+
+				queuePanel.appendChild(queueHeader);
+				queuePanel.appendChild(overallTrack);
+				queuePanel.appendChild(taskList);
+
+				const dropOverlay = document.createElement("div");
+				dropOverlay.style.position = "absolute";
+				dropOverlay.style.inset = "0";
+				dropOverlay.style.zIndex = "50";
+				dropOverlay.style.display = "none";
+				dropOverlay.style.alignItems = "center";
+				dropOverlay.style.justifyContent = "center";
+				dropOverlay.style.background = "rgba(40, 120, 232, 0.12)";
+				dropOverlay.style.border = "3px dashed #2878e8";
+				dropOverlay.style.borderRadius = "10px";
+				dropOverlay.style.pointerEvents = "none";
+
+				const dropContent = document.createElement("div");
+				dropContent.style.padding = "35px 55px";
+				dropContent.style.borderRadius = "12px";
+				dropContent.style.background = "rgba(255,255,255,0.95)";
+				dropContent.style.color = "#2878e8";
+				dropContent.style.textAlign = "center";
+				dropContent.style.boxShadow = "0 4px 20px rgba(0,0,0,0.12)";
+
+				const dropIcon = document.createElement("div");
+				dropIcon.textContent = "📁";
+				dropIcon.style.fontSize = "48px";
+				dropIcon.style.marginBottom = "12px";
+
+				const dropTitle = document.createElement("div");
+				dropTitle.textContent = "释放鼠标即可上传文件";
+				dropTitle.style.fontSize = "20px";
+				dropTitle.style.fontWeight = "bold";
+
+				const dropSubtitle = document.createElement("div");
+				dropSubtitle.textContent = "支持一次拖入多个文件";
+				dropSubtitle.style.fontSize = "13px";
+				dropSubtitle.style.marginTop = "10px";
+				dropSubtitle.style.color = "#8490a0";
+
+				dropContent.appendChild(dropIcon);
+				dropContent.appendChild(dropTitle);
+				dropContent.appendChild(dropSubtitle);
+				dropOverlay.appendChild(dropContent);
+
+				chatContainer.style.position = "relative";
+				chatContainer.appendChild(dropOverlay);
+
+				inputRow.insertBefore(fileButton, chatInputElement);
+				chatInputArea.appendChild(fileInput);
+				chatInputArea.insertBefore(queuePanel, inputRow);
+				chatInputArea.appendChild(fileStatus);
+
+				// ==================== 工具方法 ====================
+
+				function formatFileSize(size) {
+					size = Number(size || 0);
+
+					if (size < 1024) {
+						return size + " B";
+					}
+
+					if (size < 1024 * 1024) {
+						return (size / 1024).toFixed(1) + " KB";
+					}
+
+					return (size / 1024 / 1024).toFixed(2) + " MB";
+				}
+
+				function formatPercent(value) {
+					return Math.max(0, Math.min(100, value)).toFixed(0) + "%";
+				}
+
+				function setFileStatus(message, isError) {
+					fileStatus.textContent = message;
+					fileStatus.style.color = isError ? "#d44" : "#8490a0";
+				}
+
+				// ==================== 读取服务器上传配置 ====================
+
+				async function loadUploadConfig() {
+					try {
+						const response = await fetch("/api/files/config", {
+							method: "GET",
+							cache: "no-store"
+						});
+
+						const result = await response.json();
+
+						if (!response.ok || !result.success || !result.data) {
+							throw new Error(result.message || "读取上传配置失败");
+						}
+
+						const limitMB = Number(result.data.max_upload_size_mb);
+
+						if (!Number.isSafeInteger(limitMB) || limitMB <= 0) {
+							throw new Error("服务器返回的上传限制无效");
+						}
+
+						maxFileSizeMB = limitMB;
+
+						setFileStatus(
+								"支持拖拽文件到聊天窗口，单个文件最大 " + maxFileSizeMB + " MB",
+								false
+						);
+
+						fileButton.disabled = false;
+						fileInput.disabled = false;
+
+						console.log("服务器单文件上传限制：" + maxFileSizeMB + " MB");
+					} catch (error) {
+						maxFileSizeMB = 0;
+
+						setFileStatus("读取服务器上传限制失败，暂时无法上传文件", true);
+
+						fileButton.disabled = true;
+						fileInput.disabled = true;
+
+						console.error("读取上传配置失败：", error);
+					}
+				}
+
+				function createRequestId() {
+					requestCounter++;
+
+					if (window.crypto && typeof window.crypto.randomUUID === "function") {
+						return "file-" + window.crypto.randomUUID();
+					}
+
+					return "file-" + Date.now() + "-" + requestCounter;
+				}
+
+				function getCurrentTargetPeer() {
+					if (!activePeer) {
+						return null;
+					}
+
+					return {
+						id: Number(activePeer.id),
+						username: activePeer.username
+					};
+				}
+
+				function createTask(file, targetPeer) {
+					taskCounter++;
+
+					return {
+						id: taskCounter,
+						file: file,
+						targetPeer: targetPeer,
+						state: "queued",
+						loaded: 0,
+						xhr: null,
+						error: "",
+						messageId: null
+					};
+				}
+
+				function getTaskStatus(task) {
+					switch (task.state) {
+						case "queued":
+							return "等待上传";
+						case "uploading":
+							return "正在上传";
+						case "sending":
+							return "等待服务器确认";
+						case "success":
+							return "发送成功";
+						case "failed":
+							return "发送失败";
+						case "cancelled":
+							return "已取消";
+						default:
+							return "";
+					}
+				}
+
+				function getTaskPercent(task) {
+					if (task.state === "success" || task.state === "sending") {
+						return 100;
+					}
+
+					if (task.file.size <= 0) {
+						return 0;
+					}
+
+					return Math.min(100, task.loaded / task.file.size * 100);
+				}
+
+				// ==================== 队列 UI ====================
+
+				function renderQueue() {
+					queuePanel.style.display =
+							tasks.length > 0 && !queuePanelDismissed ? "block" : "none";
+
+					taskList.innerHTML = "";
+
+					let totalBytes = 0;
+					let completedBytes = 0;
+					let completedCount = 0;
+					let finishedCount = 0;
+
+					tasks.forEach(function (task) {
+						totalBytes += task.file.size;
+
+						completedBytes +=
+								task.state === "success" || task.state === "sending"
+										? task.file.size
+										: task.loaded;
+
+						if (task.state === "success") {
+							completedCount++;
+						}
+
+						if (task.state === "success" ||
+								task.state === "failed" ||
+								task.state === "cancelled") {
+							finishedCount++;
+						}
+
+						const item = document.createElement("div");
+						item.style.padding = "8px 0";
+						item.style.borderBottom = "1px solid #e8edf4";
+
+						const top = document.createElement("div");
+						top.style.display = "flex";
+						top.style.alignItems = "center";
+						top.style.justifyContent = "space-between";
+						top.style.gap = "8px";
+
+						const name = document.createElement("div");
+						name.textContent = task.file.name;
+						name.title = task.file.name;
+						name.style.minWidth = "0";
+						name.style.flex = "1";
+						name.style.overflow = "hidden";
+						name.style.textOverflow = "ellipsis";
+						name.style.whiteSpace = "nowrap";
+						name.style.fontSize = "12px";
+
+						const status = document.createElement("span");
+						status.textContent = getTaskStatus(task);
+						status.style.flexShrink = "0";
+						status.style.fontSize = "11px";
+
+						if (task.state === "success") {
+							status.style.color = "#21864a";
+						} else if (task.state === "failed" || task.state === "cancelled") {
+							status.style.color = "#d44";
+						} else {
+							status.style.color = "#687386";
+						}
+
+						top.appendChild(name);
+						top.appendChild(status);
+
+						const bottom = document.createElement("div");
+						bottom.style.display = "flex";
+						bottom.style.alignItems = "center";
+						bottom.style.gap = "8px";
+						bottom.style.marginTop = "6px";
+
+						const track = document.createElement("div");
+						track.style.flex = "1";
+						track.style.width = "100%";
+						track.style.minWidth = "80px";
+						track.style.height = "6px";
+						track.style.background = "#e2e7ef";
+						track.style.borderRadius = "4px";
+						track.style.overflow = "hidden";
+
+						const bar = document.createElement("div");
+						bar.style.height = "100%";
+						bar.style.width = getTaskPercent(task) + "%";
+						bar.style.transition = "width 0.15s";
+						bar.style.background =
+								task.state === "failed" || task.state === "cancelled"
+										? "#d44"
+										: task.state === "success" ? "#28a66a" : "#2878e8";
+
+						track.appendChild(bar);
+
+						const percent = document.createElement("span");
+						percent.textContent = formatPercent(getTaskPercent(task));
+						percent.style.width = "36px";
+						percent.style.textAlign = "right";
+						percent.style.fontSize = "11px";
+						percent.style.color = "#687386";
+
+						bottom.appendChild(track);
+						bottom.appendChild(percent);
+
+						const action = document.createElement("button");
+						action.type = "button";
+						action.textContent = "取消";
+						action.style.padding = "4px 9px";
+						action.style.fontSize = "11px";
+						action.style.flexShrink = "0";
+
+						if (task.state === "queued" || task.state === "uploading") {
+							action.addEventListener("click", function () {
+								cancelTask(task);
+							});
+						} else {
+							action.disabled = true;
+							action.style.display = "none";
+						}
+
+						bottom.appendChild(action);
+						item.appendChild(top);
+						item.appendChild(bottom);
+
+						if (task.error) {
+							const error = document.createElement("div");
+							error.textContent = task.error;
+							error.style.marginTop = "5px";
+							error.style.fontSize = "11px";
+							error.style.color = "#d44";
+							error.style.overflowWrap = "anywhere";
+							item.appendChild(error);
+						}
+
+						taskList.appendChild(item);
+					});
+
+					const percent = totalBytes > 0 ? completedBytes / totalBytes * 100 : 0;
+					overallBar.style.width = formatPercent(percent);
+
+					queueProgress.textContent =
+							completedCount + "/" + tasks.length + " 成功 · " +
+							finishedCount + "/" + tasks.length + " 完成";
+
+					if (tasks.length > 0) {
+						setFileStatus(
+								"上传队列：" + finishedCount + "/" + tasks.length + " 个文件已处理",
+								tasks.some(task => task.state === "failed")
+						);
+					}
+				}
+
+				// ==================== ACK 处理 ====================
+
+				function finishPendingAck(requestId, error, ack) {
+					const pending = pendingAcks.get(requestId);
+
+					if (!pending) {
+						return;
+					}
+
+					clearTimeout(pending.timer);
+					pendingAcks.delete(requestId);
+
+					if (error) {
+						pending.reject(error);
+					} else {
+						pending.resolve(ack);
+					}
+				}
+
+				function failAllPendingAcks(message) {
+					for (const requestId of pendingAcks.keys()) {
+						finishPendingAck(requestId, new Error(message));
+					}
+				}
+
+				function attachAckListener(ws) {
+					if (!ws || attachedSockets.has(ws)) {
+						return;
+					}
+
+					attachedSockets.add(ws);
+
+					ws.addEventListener("message", function (event) {
+						let data;
+
+						try {
+							data = JSON.parse(event.data);
+						} catch (error) {
+							return;
+						}
+
+						if (data.type !== "file_message_ack" || !data.file_message_ack) {
+							return;
+						}
+
+						const ack = data.file_message_ack;
+
+						if (!ack.request_id) {
+							return;
+						}
+
+						if (ack.success) {
+							finishPendingAck(ack.request_id, null, ack);
+						} else {
+							finishPendingAck(
+									ack.request_id,
+									new Error(ack.error || "文件消息发送失败")
+							);
+						}
+					});
+
+					ws.addEventListener("close", function () {
+						failAllPendingAcks("WebSocket 已断开，文件消息发送失败");
+					});
+				}
+
+				function sendUploadedFile(fileData, targetPeer) {
+					return new Promise(function (resolve, reject) {
+						if (!socket || socket.readyState !== WebSocket.OPEN) {
+							reject(new Error("WebSocket 未连接"));
+							return;
+						}
+
+						const ws = socket;
+						attachAckListener(ws);
+
+						const requestId = createRequestId();
+
+						const payload = {
+							type: targetPeer ? "private_file_message" : "file_message",
+							request_id: requestId,
+							file_id: Number(fileData.id)
+						};
+
+						if (targetPeer) {
+							payload.receiver_id = Number(targetPeer.id);
+						}
+
+						const timer = setTimeout(function () {
+							finishPendingAck(
+									requestId,
+									new Error("等待服务器确认超时，文件消息发送失败")
+							);
+						}, ACK_TIMEOUT);
+
+						pendingAcks.set(requestId, {
+							resolve: resolve,
+							reject: reject,
+							timer: timer
+						});
+
+						try {
+							ws.send(JSON.stringify(payload));
+						} catch (error) {
+							finishPendingAck(
+									requestId,
+									new Error("WebSocket 发送失败：" + error.message)
+							);
+						}
+					});
+				}
+
+				// ==================== XHR 文件上传 ====================
+
+				function uploadFile(task) {
+					return new Promise(function (resolve, reject) {
+						const file = task.file;
+						const formData = new FormData();
+						formData.append("file", file);
+
+						const xhr = new XMLHttpRequest();
+						task.xhr = xhr;
+						task.state = "uploading";
+						task.loaded = 0;
+
+						xhr.open("POST", "/api/files/upload", true);
+
+						xhr.upload.onprogress = function (event) {
+							if (event.lengthComputable) {
+								task.loaded = event.loaded;
+							} else {
+								task.loaded = Math.min(event.loaded, file.size);
+							}
+
+							renderQueue();
+						};
+
+						xhr.onload = function () {
+							task.xhr = null;
+
+							if (task.state === "cancelled") {
+								reject(new Error("上传已取消"));
+								return;
+							}
+
+							let result;
+
+							try {
+								result = JSON.parse(xhr.responseText);
+							} catch (error) {
+								reject(new Error("服务器返回了无法识别的数据"));
+								return;
+							}
+
+							if (xhr.status < 200 || xhr.status >= 300 ||
+									!result.success || !result.data) {
+								reject(new Error(
+										result.message || "文件上传失败，HTTP " + xhr.status
+								));
+								return;
+							}
+
+							if (!result.data.id) {
+								reject(new Error("上传成功，但服务器没有返回文件 ID"));
+								return;
+							}
+
+							task.loaded = file.size;
+							resolve(result.data);
+						};
+
+						xhr.onerror = function () {
+							task.xhr = null;
+							reject(new Error("网络错误，文件上传失败"));
+						};
+
+						xhr.ontimeout = function () {
+							task.xhr = null;
+							reject(new Error("文件上传超时"));
+						};
+
+						xhr.onabort = function () {
+							task.xhr = null;
+							reject(new Error("上传已取消"));
+						};
+
+						xhr.timeout = 0;
+
+						renderQueue();
+
+						requestAnimationFrame(function () {
+							if (task.state !== "cancelled") {
+								xhr.send(formData);
+							}
+						});
+					});
+				}
+
+				// ==================== 任务处理 ====================
+
+				async function processTask(task) {
+					if (!currentUser) {
+						throw new Error("请先登录");
+					}
+
+					if (task.file.size <= 0) {
+						throw new Error("不能发送空文件");
+					}
+
+					if (maxFileSizeMB <= 0) {
+						throw new Error("尚未获取服务器上传限制");
+					}
+
+					if (task.file.size > maxFileSizeMB * 1024 * 1024) {
+						throw new Error("文件超过 " + maxFileSizeMB + " MB");
+					}
+
+					const fileData = await uploadFile(task);
+
+					if (task.state === "cancelled") {
+						throw new Error("上传已取消");
+					}
+
+					task.state = "sending";
+					task.loaded = task.file.size;
+					renderQueue();
+
+					// 进入 sending 阶段后，不再提供取消操作。
+					// 因为服务器可能已经保存文件消息，不能保证撤销成功。
+					const ack = await sendUploadedFile(fileData, task.targetPeer);
+
+					task.messageId = ack.message_id;
+					task.state = "success";
+					task.loaded = task.file.size;
+
+					renderQueue();
+				}
+
+				function cancelTask(task) {
+					if (task.state === "queued") {
+						task.state = "cancelled";
+						task.error = "用户取消";
+						renderQueue();
+						return;
+					}
+
+					if (task.state === "uploading" && task.xhr) {
+						task.state = "cancelled";
+						task.error = "用户取消上传";
+
+						const xhr = task.xhr;
+						task.xhr = null;
+
+						xhr.abort();
+						renderQueue();
+					}
+				}
+
+				async function processQueue() {
+					if (processingQueue) {
+						return;
+					}
+
+					processingQueue = true;
+					fileButton.disabled = true;
+
+					try {
+						while (true) {
+							const task = tasks.find(item => item.state === "queued");
+
+							if (!task) {
+								break;
+							}
+
+							try {
+								await processTask(task);
+							} catch (error) {
+								if (task.state !== "cancelled") {
+									task.state = "failed";
+									task.error = error.message || "发送失败";
+									console.error("文件发送失败：", task.file.name, error);
+								}
+							}
+
+							task.xhr = null;
+							renderQueue();
+						}
+					} finally {
+						processingQueue = false;
+						fileButton.disabled = maxFileSizeMB <= 0;
+						fileInput.disabled = maxFileSizeMB <= 0;
+
+						const successCount = tasks.filter(
+								task => task.state === "success"
+						).length;
+
+						const failedCount = tasks.filter(
+								task => task.state === "failed"
+						).length;
+
+						const cancelledCount = tasks.filter(
+								task => task.state === "cancelled"
+						).length;
+
+						setFileStatus(
+								"队列处理完成：成功 " + successCount +
+								" 个，失败 " + failedCount +
+								" 个，取消 " + cancelledCount + " 个",
+								failedCount > 0
+						);
+
+						renderQueue();
+					}
+				}
+
+				// ==================== 添加任务 ====================
+
+				function enqueueFiles(files) {
+					if (!currentUser) {
+						setFileStatus("请先登录", true);
+						return;
+					}
+
+					const fileList = Array.from(files || []);
+
+					if (fileList.length === 0) {
+						return;
+					}
+
+					if (maxFileSizeMB <= 0) {
+						setFileStatus("尚未获取服务器上传限制，请稍后再试", true);
+						return;
+					}
+
+					// 新一批文件入队时，重新显示上传进度面板。
+					queuePanelDismissed = false;
+
+					// 入队时固定目标，避免上传期间切换聊天窗口导致发错人。
+					const targetPeer = getCurrentTargetPeer();
+
+					fileList.forEach(function (file) {
+						tasks.push(createTask(file, targetPeer));
+					});
+
+					renderQueue();
+					processQueue();
+				}
+
+				// ==================== 文件选择 ====================
+
+				fileButton.addEventListener("click", function () {
+					fileInput.click();
+				});
+
+				fileInput.addEventListener("change", function () {
+					if (fileInput.files && fileInput.files.length > 0) {
+						enqueueFiles(fileInput.files);
+					}
+
+					fileInput.value = "";
+				});
+
+				// ==================== 拖拽上传 ====================
+
+				function hasDraggedFiles(event) {
+					const types = event.dataTransfer && event.dataTransfer.types;
+
+					if (!types) {
+						return false;
+					}
+
+					return Array.from(types).includes("Files");
+				}
+
+				document.addEventListener("dragover", function (event) {
+					if (hasDraggedFiles(event)) {
+						event.preventDefault();
+					}
+				});
+
+				document.addEventListener("drop", function (event) {
+					if (hasDraggedFiles(event)) {
+						event.preventDefault();
+					}
+				});
+
+				chatContainer.addEventListener("dragenter", function (event) {
+					if (!hasDraggedFiles(event)) {
+						return;
+					}
+
+					event.preventDefault();
+					dragCounter++;
+					dropOverlay.style.display = "flex";
+				});
+
+				chatContainer.addEventListener("dragover", function (event) {
+					if (!hasDraggedFiles(event)) {
+						return;
+					}
+
+					event.preventDefault();
+
+					if (event.dataTransfer) {
+						event.dataTransfer.dropEffect = "copy";
+					}
+
+					dropOverlay.style.display = "flex";
+				});
+
+				chatContainer.addEventListener("dragleave", function (event) {
+					if (!hasDraggedFiles(event)) {
+						return;
+					}
+
+					event.preventDefault();
+					dragCounter--;
+
+					if (dragCounter <= 0) {
+						dragCounter = 0;
+						dropOverlay.style.display = "none";
+					}
+				});
+
+				chatContainer.addEventListener("drop", function (event) {
+					if (!hasDraggedFiles(event)) {
+						return;
+					}
+
+					event.preventDefault();
+					event.stopPropagation();
+
+					dragCounter = 0;
+					dropOverlay.style.display = "none";
+
+					if (event.dataTransfer && event.dataTransfer.files.length > 0) {
+						enqueueFiles(event.dataTransfer.files);
+					}
+				});
+
+				// ==================== 文件消息删除 ====================
+
+				window.removeFileMessageFromChat = function (scope, messageId, eventData) {
+					const messageKey = (scope === "private" ? "p-" : "m-") + messageId;
+
+					renderedMessageIds.delete(messageKey);
+
+					const elements = chatMessages.querySelectorAll(".chat-message");
+
+					elements.forEach(function (element) {
+						if (element.dataset.messageId === String(messageId) &&
+								element.dataset.messageScope === scope) {
+							element.remove();
+						}
+					});
+
+					// 私聊文件消息被删除，如果当前用户是接收者，
+					// 则重新从服务端查询该私聊对象的未读数量。
+					if (scope === "private" &&
+							eventData &&
+							currentUser &&
+							Number(eventData.receiver_id) === Number(currentUser.id)) {
+
+						const peerId = Number(eventData.sender_id);
+
+						if (peerId > 0) {
+							unreadVersions.set(
+									peerId,
+									(unreadVersions.get(peerId) || 0) + 1
+							);
+
+							loadUnreadCount(peerId);
+						}
+					}
+				};
+
+				async function deleteFileMessage(message, isPrivate, button) {
+					const scope = isPrivate ? "private" : "public";
+					const messageId = Number(message.id);
+
+					if (!messageId ||
+							!confirm("确定删除这条文件消息吗？删除后无法恢复。")) {
+						return;
+					}
+
+					button.disabled = true;
+					button.textContent = "删除中...";
+
+					try {
+						const response = await fetch(
+								"/api/files/messages/" + scope + "/" + messageId,
+								{
+									method: "DELETE"
+								}
+						);
+
+						const result = await response.json();
+
+						if (!response.ok || !result.success) {
+							throw new Error(result.message || "删除文件消息失败");
+						}
+
+						window.removeFileMessageFromChat(scope, messageId, result.data);
+					} catch (error) {
+						alert(error.message || "删除文件消息失败");
+						button.disabled = false;
+						button.textContent = "×";
+					}
+				}
+
+				// ==================== 文件消息渲染 ====================
+
+				const originalCreateMessageElement = createMessageElement;
+
+				createMessageElement = function (message, isPrivate) {
+					let fileData = null;
+
+					try {
+						const parsed = JSON.parse(message.content);
+
+						if (parsed && parsed.type === "file") {
+							fileData = parsed;
+						}
+					} catch (error) {
+						// 普通文本消息。
+					}
+
+					if (!fileData) {
+						return originalCreateMessageElement(message, isPrivate);
+					}
+
+					const wrapper = document.createElement("div");
+					wrapper.className = "chat-message";
+
+					const senderId = isPrivate ? message.sender_id : message.user_id;
+					const senderName = isPrivate ? message.sender_name : message.username;
+					const scope = isPrivate ? "private" : "public";
+
+					wrapper.dataset.messageId = String(message.id);
+					wrapper.dataset.messageScope = scope;
+
+					if (currentUser && Number(senderId) === Number(currentUser.id)) {
+						wrapper.classList.add("mine");
+					}
+
+					const info = document.createElement("div");
+					info.className = "message-info";
+
+					const date = new Date(Number(message.created_at) * 1000);
+					info.textContent = senderName + " · " + date.toLocaleString();
+
+					const card = document.createElement("div");
+					card.className = "message-content";
+					card.style.display = "inline-flex";
+					card.style.flexDirection = "column";
+					card.style.alignItems = "flex-start";
+					card.style.gap = "8px";
+					card.style.minWidth = "220px";
+					card.style.maxWidth = "min(420px, 100%)";
+
+					const contentType = String(fileData.content_type || "").toLowerCase();
+					const isImage = previewImageTypes.has(contentType);
+					const fileId = encodeURIComponent(fileData.file_id);
+					const downloadUrl = "/api/files/" + fileId;
+
+					const details = document.createElement("div");
+					details.style.display = "flex";
+					details.style.flexDirection = "column";
+					details.style.minWidth = "0";
+					details.style.width = "100%";
+
+					const fileName = document.createElement("div");
+					fileName.textContent = fileData.original_name || "未知文件";
+					fileName.style.fontWeight = "bold";
+					fileName.style.overflowWrap = "anywhere";
+
+					const fileSize = document.createElement("div");
+					fileSize.textContent = formatFileSize(fileData.size);
+					fileSize.style.fontSize = "12px";
+					fileSize.style.opacity = "0.8";
+					fileSize.style.marginTop = "4px";
+
+					// 图片缩略图
+					if (isImage) {
+						const imageUrl = downloadUrl + "?inline=1";
+
+						const thumbnail = document.createElement("img");
+						thumbnail.src = imageUrl;
+						thumbnail.alt = fileData.original_name || "图片";
+						thumbnail.loading = "lazy";
+						thumbnail.style.display = "block";
+						thumbnail.style.maxWidth = "100%";
+						thumbnail.style.maxHeight = "240px";
+						thumbnail.style.objectFit = "contain";
+						thumbnail.style.borderRadius = "6px";
+						thumbnail.style.cursor = "zoom-in";
+						thumbnail.style.background = "rgba(0,0,0,0.04)";
+
+						thumbnail.addEventListener("click", function () {
+							openImagePreview(imageUrl);
+						});
+
+						thumbnail.addEventListener("error", function () {
+							thumbnail.style.display = "none";
+
+							const errorText = document.createElement("div");
+							errorText.textContent = "图片预览加载失败，请尝试下载";
+							errorText.style.fontSize = "12px";
+							errorText.style.color = "#d44";
+
+							details.insertBefore(errorText, fileName);
+						});
+
+						card.appendChild(thumbnail);
+					}
+
+					const downloadLink = document.createElement("a");
+					downloadLink.textContent = "下载文件";
+					downloadLink.href = downloadUrl;
+					downloadLink.download = fileData.original_name || "download";
+					downloadLink.style.display = "inline-block";
+					downloadLink.style.marginTop = "6px";
+					downloadLink.style.fontSize = "12px";
+					downloadLink.style.color = "inherit";
+
+					details.appendChild(fileName);
+					details.appendChild(fileSize);
+					details.appendChild(downloadLink);
+
+					// 只有发送者本人或管理员显示右上角删除叉号。
+					const isOwner = currentUser &&
+							Number(senderId) === Number(currentUser.id);
+
+					const isAdmin = currentUser && currentUser.is_admin;
+
+					if (isOwner || isAdmin) {
+						card.style.position = "relative";
+						card.style.paddingTop = "24px";
+
+						const deleteButton = document.createElement("button");
+						deleteButton.type = "button";
+						deleteButton.textContent = "×";
+						deleteButton.title = "删除文件消息";
+						deleteButton.setAttribute("aria-label", "删除文件消息");
+
+						deleteButton.style.position = "absolute";
+						deleteButton.style.top = "4px";
+						deleteButton.style.right = "6px";
+						deleteButton.style.width = "24px";
+						deleteButton.style.height = "24px";
+						deleteButton.style.padding = "0";
+						deleteButton.style.border = "none";
+						deleteButton.style.borderRadius = "50%";
+						deleteButton.style.background = "transparent";
+						deleteButton.style.color = "#999";
+						deleteButton.style.fontSize = "22px";
+						deleteButton.style.lineHeight = "22px";
+						deleteButton.style.cursor = "pointer";
+
+						deleteButton.addEventListener("mouseenter", function () {
+							deleteButton.style.background = "#d94b4b";
+							deleteButton.style.color = "#fff";
+						});
+
+						deleteButton.addEventListener("mouseleave", function () {
+							deleteButton.style.background = "transparent";
+							deleteButton.style.color = "#999";
+						});
+
+						deleteButton.addEventListener("click", function () {
+							deleteFileMessage(message, isPrivate, deleteButton);
+						});
+
+						card.appendChild(deleteButton);
+					}
+
+					card.appendChild(details);
+					wrapper.appendChild(info);
+					wrapper.appendChild(card);
+
+					return wrapper;
+				};
+
+				// ==================== 初始化 ====================
+
+				loadUploadConfig();
+
+				console.log("QChat 0.8 文件上传及图片预览初始化完成");
+			})();
+		</script>
+
+
+	</body>
 </html>
