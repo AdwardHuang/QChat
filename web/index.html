@@ -296,9 +296,10 @@
 			}
 
 			.chat-message.mine .message-content {
-				background: #2878e8;
-				color: white;
+				background: #f4f4f4;
+				color: #303030;
 				text-align: left;
+				box-shadow: none;
 			}
 
 			.chat-input-area {
@@ -315,16 +316,16 @@
 
 			.chat-input {
 				flex: 1;
-				height: 72px;
-				min-height: 72px;
-				max-height: 72px;
-				line-height: 24px;
-				padding: 10px 12px;
+				height: 42px;
+				min-height: 42px;
+				max-height: 130px;
+				line-height: 22px;
+				padding: 9px 12px;
 				box-sizing: border-box;
 				resize: none;
-				overflow-y: auto;
+				overflow-y: hidden;
 				font-family: inherit;
-				font-size: inherit;
+				font-size: 14px;
 			}
 
 			.send-button {
@@ -584,6 +585,56 @@
 					max-width: 90%;
 				}
 			}
+			.message-actions {
+				display: flex;
+				justify-content: flex-start;
+				margin-top: 3px;
+				min-height: 24px;
+			}
+
+			.chat-message.mine .message-actions {
+				justify-content: flex-end;
+			}
+
+			.message-copy-button {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 26px;
+				height: 24px;
+				padding: 4px;
+				background: transparent;
+				color: #8b94a1;
+				border-radius: 5px;
+				opacity: 0;
+				transition: opacity 0.15s;
+			}
+
+			.chat-message:hover .message-copy-button,
+			.message-copy-button:focus-visible {
+				opacity: 1;
+			}
+
+			.message-copy-button:hover {
+				background: #e8e8e8;
+				color: #333;
+			}
+
+			.message-copy-button svg {
+				width: 16px;
+				height: 16px;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 1.7;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+
+			@media (hover: none) {
+				.message-copy-button {
+					opacity: 0.7;
+				}
+			}
 		</style>
 	</head>
 
@@ -665,7 +716,7 @@
 
 			<div class="chat-input-area">
 				<div class="chat-input-row">
-					<textarea class="chat-input" id="chatInput" rows="3" maxlength="3000" placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"></textarea>
+					<textarea class="chat-input" id="chatInput" rows="1" maxlength="3000" placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"></textarea>
 
 					<button class="send-button" id="sendButton">
 						发送
@@ -1452,6 +1503,44 @@
 				wrapper.appendChild(info);
 				wrapper.appendChild(content);
 
+				const actions = document.createElement("div");
+				actions.className = "message-actions";
+
+				const copyButton = document.createElement("button");
+				copyButton.type = "button";
+				copyButton.className = "message-copy-button";
+				copyButton.title = "复制消息";
+				copyButton.setAttribute("aria-label", "复制消息");
+				copyButton.innerHTML = '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>';
+
+				copyButton.addEventListener("click", async function () {
+					try {
+						if (navigator.clipboard && window.isSecureContext) {
+							await navigator.clipboard.writeText(message.content);
+						} else {
+							const temp = document.createElement("textarea");
+							temp.value = message.content;
+							temp.style.position = "fixed";
+							temp.style.opacity = "0";
+							document.body.appendChild(temp);
+							temp.select();
+							const success = document.execCommand("copy");
+							temp.remove();
+							if (!success) {
+								throw new Error("复制失败");
+							}
+						}
+
+						copyButton.title = "已复制";
+					} catch (error) {
+						console.error("复制消息失败", error);
+						copyButton.title = "复制失败";
+					}
+				});
+
+				actions.appendChild(copyButton);
+				wrapper.appendChild(actions);
+
 				return wrapper;
 			}
 
@@ -1578,6 +1667,16 @@
 				}
 			}
 
+			function adjustChatInputHeight() {
+				chatInput.style.height = "42px";
+				const maxHeight = 130;
+				const newHeight = Math.min(chatInput.scrollHeight, maxHeight);
+				chatInput.style.height = Math.max(42, newHeight) + "px";
+				chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? "auto" : "hidden";
+			}
+
+			chatInput.addEventListener("input", adjustChatInputHeight);
+
 			// 发送消息
 			function sendMessage() {
 				const content = chatInput.value.trim();
@@ -1606,13 +1705,14 @@
 				}
 
 				chatInput.value = "";
+				adjustChatInputHeight();
 				chatInput.focus();
 			}
 
 			sendButton.addEventListener("click", sendMessage);
 
 			chatInput.addEventListener("keydown", function (event) {
-				if (event.key === "Enter" && !event.shiftKey) {
+				if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
 					event.preventDefault();
 					sendMessage();
 				}
