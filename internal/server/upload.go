@@ -29,6 +29,9 @@ func (s *Server) WithFileUploads(next http.Handler, uploadDir string, maxUploadS
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/messages/delete/"):
+			s.handleMessageDelete(w, r)
+
 		case r.URL.Path == "/api/files/config":
 			handleFileConfig(w, r, maxUploadSize)
 
