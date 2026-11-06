@@ -791,6 +791,182 @@
 					opacity: 0.7;
 				}
 			}
+			/* 聊天记录搜索 */
+			.search-button {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				padding: 7px 12px;
+				background: #f1f3f6;
+				color: #465267;
+				font-size: 13px;
+			}
+
+			.search-button:hover {
+				background: #e5e8ed;
+			}
+
+			.search-button svg {
+				width: 16px;
+				height: 16px;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 2;
+				stroke-linecap: round;
+			}
+
+			.search-mask {
+				display: none;
+				position: fixed;
+				inset: 0;
+				z-index: 1500;
+				align-items: center;
+				justify-content: center;
+				padding: 20px;
+				background: rgba(20, 30, 45, 0.48);
+			}
+
+			.search-dialog {
+				display: flex;
+				flex-direction: column;
+				width: 680px;
+				max-width: 100%;
+				max-height: 85vh;
+				background: white;
+				border-radius: 12px;
+				box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+				overflow: hidden;
+			}
+
+			.search-dialog-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 16px 20px;
+				border-bottom: 1px solid #e5e8ed;
+				font-size: 16px;
+				font-weight: bold;
+			}
+
+			.search-close-button {
+				padding: 6px 12px;
+				background: #f1f3f6;
+				color: #555;
+			}
+
+			.search-toolbar {
+				display: flex;
+				gap: 8px;
+				padding: 15px 20px;
+			}
+
+			.search-input {
+				flex: 1;
+				min-width: 0;
+				height: 38px;
+			}
+
+			.search-submit-button {
+				padding: 0 18px;
+			}
+
+			.search-results {
+				flex: 1;
+				min-height: 150px;
+				overflow-y: auto;
+				padding: 0 20px;
+			}
+
+			.search-result-item {
+				padding: 13px 10px;
+				border-bottom: 1px solid #edf0f3;
+				cursor: pointer;
+				border-radius: 5px;
+			}
+
+			.search-result-item:hover {
+				background: #f5f7fa;
+			}
+
+			.search-result-header {
+				display: flex;
+				justify-content: space-between;
+				gap: 10px;
+				margin-bottom: 7px;
+				color: #8490a0;
+				font-size: 12px;
+			}
+
+			.search-result-content {
+				font-size: 14px;
+				line-height: 1.6;
+				white-space: pre-wrap;
+				word-break: break-word;
+			}
+
+			.search-result-content mark {
+				background: #fff0a6;
+				color: #333;
+			}
+
+			.search-result-footer {
+				margin-top: 6px;
+				color: #8490a0;
+				font-size: 11px;
+			}
+
+			.search-status {
+				padding: 15px;
+				text-align: center;
+				color: #8490a0;
+				font-size: 13px;
+			}
+
+			.search-pagination {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 15px;
+				padding: 12px;
+				border-top: 1px solid #e5e8ed;
+			}
+
+			.search-pagination button {
+				padding: 6px 12px;
+				background: #f1f3f6;
+				color: #465267;
+			}
+
+			.chat-message.search-highlight {
+				animation: searchHighlight 2s ease;
+			}
+
+			@keyframes searchHighlight {
+				0%, 100% { background: transparent; }
+				20%, 70% { background: #fff0a6; }
+			}
+
+			@media (max-width: 600px) {
+				.search-mask {
+					padding: 8px;
+				}
+
+				.search-dialog {
+					max-height: 94vh;
+				}
+
+				.search-toolbar {
+					padding: 12px;
+				}
+
+				.search-results {
+					padding: 0 10px;
+				}
+
+				.search-result-header {
+					flex-direction: column;
+				}
+			}
 		</style>
 	</head>
 
@@ -830,6 +1006,13 @@
 
 				<div class="chat-user">
 					<span id="currentUsername"></span>
+					<button class="search-button" id="messageSearchButton" type="button">
+						<svg viewBox="0 0 24 24">
+							<circle cx="10.5" cy="10.5" r="6.5"></circle>
+							<path d="m16 16 5 5"></path>
+						</svg>
+						搜索记录
+					</button>
 					<button class="admin-button" id="adminUsersButton" style="display:none" type="button">
 						用户管理
 					</button>
@@ -937,6 +1120,32 @@
 				</div>
 			</div>
 		</div>
+		<div class="search-mask" id="messageSearchMask">
+			<div class="search-dialog">
+				<div class="search-dialog-header">
+					<span>聊天记录搜索</span>
+					<button class="search-close-button" id="messageSearchClose" type="button">
+						关闭
+					</button>
+				</div>
+
+				<form class="search-toolbar" id="messageSearchForm">
+					<input class="search-input" id="messageSearchInput"
+						   maxlength="100" placeholder="搜索公共聊天和全部私聊记录..." required>
+					<button class="search-submit-button" type="submit">搜索</button>
+				</form>
+
+				<div class="search-results" id="messageSearchResults">
+					<div class="search-status">请输入关键词搜索聊天记录</div>
+				</div>
+
+				<div class="search-pagination">
+					<button id="messageSearchPrev" type="button" disabled>上一页</button>
+					<span id="messageSearchPageInfo">第 0 / 0 页</span>
+					<button id="messageSearchNext" type="button" disabled>下一页</button>
+				</div>
+			</div>
+		</div>
 
 		<script>
 			let currentUser = null;
@@ -981,6 +1190,251 @@
 			const adminUserCount = document.getElementById("adminUserCount");
 			const adminCreateForm = document.getElementById("adminCreateForm");
 			const adminCreateButton = document.getElementById("adminCreateButton");
+
+			const messageSearchButton = document.getElementById("messageSearchButton");
+			const messageSearchMask = document.getElementById("messageSearchMask");
+			const messageSearchClose = document.getElementById("messageSearchClose");
+			const messageSearchForm = document.getElementById("messageSearchForm");
+			const messageSearchInput = document.getElementById("messageSearchInput");
+			const messageSearchResults = document.getElementById("messageSearchResults");
+			const messageSearchPrev = document.getElementById("messageSearchPrev");
+			const messageSearchNext = document.getElementById("messageSearchNext");
+			const messageSearchPageInfo = document.getElementById("messageSearchPageInfo");
+
+			let messageSearchKeyword = "";
+			let messageSearchPage = 1;
+			let messageSearchTotalPages = 0;
+			let messageSearchLoading = false;
+
+			function openMessageSearch() {
+				messageSearchMask.style.display = "flex";
+				messageSearchInput.focus();
+			}
+
+			function closeMessageSearch() {
+				messageSearchMask.style.display = "none";
+			}
+
+			messageSearchButton.addEventListener("click", openMessageSearch);
+			messageSearchClose.addEventListener("click", closeMessageSearch);
+
+			messageSearchMask.addEventListener("click", function (event) {
+				if (event.target === messageSearchMask) {
+					closeMessageSearch();
+				}
+			});
+
+			async function searchMessages(page) {
+				const keyword = messageSearchInput.value.trim();
+				if (!keyword || messageSearchLoading) {
+					return;
+				}
+
+				messageSearchKeyword = keyword;
+				messageSearchPage = page;
+				messageSearchLoading = true;
+
+				messageSearchResults.innerHTML =
+						'<div class="search-status">正在搜索...</div>';
+
+				messageSearchPrev.disabled = true;
+				messageSearchNext.disabled = true;
+
+				try {
+					const url = "/api/messages/search?q=" +
+							encodeURIComponent(keyword) + "&page=" + page;
+
+					const response = await fetch(url);
+					const result = await response.json();
+
+					if (!response.ok || !result.success) {
+						throw new Error(result.message || "搜索失败");
+					}
+
+					const data = result.data;
+					messageSearchTotalPages = Number(data.total_pages || 0);
+
+					renderMessageSearchResults(data.results || []);
+
+					messageSearchPageInfo.textContent =
+							"第 " + page + " / " + messageSearchTotalPages + " 页，共 " +
+							(data.total || 0) + " 条";
+
+					messageSearchPrev.disabled = page <= 1;
+					messageSearchNext.disabled = page >= messageSearchTotalPages;
+
+				} catch (error) {
+					messageSearchResults.innerHTML = "";
+					const status = document.createElement("div");
+					status.className = "search-status";
+					status.textContent = error.message || "搜索失败";
+					messageSearchResults.appendChild(status);
+				} finally {
+					messageSearchLoading = false;
+				}
+			}
+
+			function renderMessageSearchResults(results) {
+				messageSearchResults.innerHTML = "";
+
+				if (results.length === 0) {
+					const empty = document.createElement("div");
+					empty.className = "search-status";
+					empty.textContent = "没有找到匹配的聊天记录";
+					messageSearchResults.appendChild(empty);
+					return;
+				}
+
+				results.forEach(item => {
+					const element = document.createElement("div");
+					element.className = "search-result-item";
+
+					const header = document.createElement("div");
+					header.className = "search-result-header";
+
+					const sender = document.createElement("span");
+					sender.textContent = item.sender_name || "未知用户";
+
+					const date = document.createElement("span");
+					date.textContent = new Date(Number(item.created_at) * 1000)
+							.toLocaleString();
+
+					header.appendChild(sender);
+					header.appendChild(date);
+
+					const content = document.createElement("div");
+					content.className = "search-result-content";
+
+					// 使用文本节点，不把聊天内容作为 HTML 执行。
+					const text = String(item.content || "");
+					const index = text.toLowerCase().indexOf(messageSearchKeyword.toLowerCase());
+
+					if (index >= 0) {
+						content.appendChild(document.createTextNode(text.substring(0, index)));
+						const mark = document.createElement("mark");
+						mark.textContent = text.substring(index, index + messageSearchKeyword.length);
+						content.appendChild(mark);
+						content.appendChild(document.createTextNode(text.substring(index + messageSearchKeyword.length)));
+					} else {
+						content.textContent = text;
+					}
+
+					const footer = document.createElement("div");
+					footer.className = "search-result-footer";
+
+					if (item.scope === "private") {
+						footer.textContent = "私聊 · " + (item.peer_name || "未知用户");
+					} else {
+						footer.textContent = "公共聊天室";
+					}
+
+					element.appendChild(header);
+					element.appendChild(content);
+					element.appendChild(footer);
+
+					element.addEventListener("click", function () {
+						jumpToSearchMessage(item);
+					});
+
+					messageSearchResults.appendChild(element);
+				});
+			}
+
+			messageSearchForm.addEventListener("submit", function (event) {
+				event.preventDefault();
+				searchMessages(1);
+			});
+
+			messageSearchPrev.addEventListener("click", function () {
+				if (messageSearchPage > 1) {
+					searchMessages(messageSearchPage - 1);
+				}
+			});
+
+			messageSearchNext.addEventListener("click", function () {
+				if (messageSearchPage < messageSearchTotalPages) {
+					searchMessages(messageSearchPage + 1);
+				}
+			});
+
+			// 根据搜索结果切换会话，并加载目标消息所在的历史区间。
+			async function jumpToSearchMessage(item) {
+				closeMessageSearch();
+
+				try {
+					if (item.scope === "private") {
+						if (!item.peer_id || !item.peer_name) {
+							throw new Error("私聊对象信息不完整");
+						}
+
+						await openPrivateChat({
+							id: Number(item.peer_id),
+							username: item.peer_name
+						});
+					} else {
+						await switchToPublicChat();
+					}
+
+					const token = viewToken;
+					const messageId = Number(item.message_id);
+					if (!messageId) {
+						throw new Error("消息 ID 无效");
+					}
+
+					const url = item.scope === "private"
+							? "/api/private/messages?peer_id=" +
+							encodeURIComponent(item.peer_id) +
+							"&before_id=" + encodeURIComponent(messageId + 1)
+							: "/api/messages?before_id=" +
+							encodeURIComponent(messageId + 1);
+
+					const response = await fetch(url);
+					if (!response.ok || token !== viewToken) {
+						throw new Error("加载目标消息失败");
+					}
+
+					const result = await response.json();
+					if (!result.success || !result.data) {
+						throw new Error(result.message || "加载目标消息失败");
+					}
+
+					const messages = result.data.messages || [];
+					if (messages.length === 0) {
+						throw new Error("没有找到目标消息，可能已被删除");
+					}
+
+					if (token !== viewToken) {
+						return;
+					}
+
+					chatMessages.innerHTML = "";
+					renderedMessageIds.clear();
+
+					messages.forEach(message => {
+						appendMessage(message, item.scope === "private");
+					});
+
+					const target = chatMessages.querySelector(
+							'[data-message-id="' + messageId +
+							'"][data-message-scope="' + item.scope + '"]'
+					);
+
+					if (!target) {
+						throw new Error("目标消息不在当前加载的历史记录中");
+					}
+
+					target.scrollIntoView({behavior: "smooth", block: "center"});
+					target.classList.add("search-highlight");
+
+					setTimeout(function () {
+						target.classList.remove("search-highlight");
+					}, 2200);
+
+				} catch (error) {
+					alert(error.message || "定位消息失败");
+				}
+			}
+
 
 			function showLogin() {
 				loginContainer.style.display = "block";

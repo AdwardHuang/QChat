@@ -79,6 +79,9 @@ func (s *Server) routes() {
 	// 公共聊天历史
 	s.mux.HandleFunc("/api/messages", s.handleMessages)
 
+	// 聊天记录搜索
+	s.mux.HandleFunc("/api/messages/search", s.handleMessageSearch)
+
 	// 私聊历史和未读消息
 	s.mux.HandleFunc("/api/private/messages", s.handlePrivateMessages)
 	s.mux.HandleFunc("/api/private/unread", s.handlePrivateUnread)
