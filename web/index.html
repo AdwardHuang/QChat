@@ -324,7 +324,7 @@
 			}
 
 			.chat-message.mine .message-content {
-				background: #f4f4f4;
+				background: #3a83f721;
 				color: #303030;
 				text-align: left;
 				box-shadow: none;
@@ -339,7 +339,16 @@
 			.chat-input-row {
 				display: flex;
 				align-items: flex-end;
-				gap: 10px;
+				gap: 8px;
+				padding: 5px 7px;
+				background: #ffffff;
+				border: 1px solid #e5e5e5;
+				border-radius: 26px;
+				transition: border-color 0.15s ease;
+			}
+
+			.chat-input-row:focus-within {
+				border-color: #d0d0d0;
 			}
 
 			.chat-input {
@@ -347,45 +356,95 @@
 				flex: 1;
 				width: 100%;
 				min-width: 0;
-				height: 42px;
-				min-height: 42px;
+				height: 40px;
+				min-height: 40px;
 				max-height: 130px;
-				padding: 9px 15px;
+				padding: 9px 5px;
 				box-sizing: border-box;
-
 				font-family: inherit;
 				font-size: 14px;
 				line-height: 22px;
 				color: #303030;
-
-				background: #ffffff;
-				border: 1px solid #e5e5e5;
-				border-radius: 22px;
-
+				background: transparent;
+				border: none;
+				border-radius: 0;
 				outline: none;
 				box-shadow: none;
 				resize: none;
 				overflow-y: hidden;
-
-				transition: border-color 0.15s ease;
 			}
 
-			/* 聚焦时不改变边框粗细和颜色 */
 			.chat-input:focus,
 			.chat-input:focus-visible {
 				outline: none;
-				border: 1px solid #e5e5e5;
+				border: none;
 				box-shadow: none;
 			}
 
-			/* 鼠标悬停时也保持简洁 */
 			.chat-input:hover {
-				border-color: #d8d8d8;
+				border-color: transparent;
+			}
+
+			.attach-button {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex-shrink: 0;
+				width: 36px;
+				height: 36px;
+				padding: 0;
+				border-radius: 50%;
+				background: transparent;
+				color: #555;
+				font-size: 25px;
+				font-weight: 300;
+				line-height: 1;
+			}
+
+			.attach-button:hover {
+				background: #f0f0f0;
+				color: #222;
 			}
 
 			.send-button {
-				width: 80px;
-				height: 40px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex-shrink: 0;
+				width: 36px;
+				height: 36px;
+				padding: 0;
+				border-radius: 50%;
+				background: #202020;
+				color: #ffffff;
+				transition: background 0.15s ease, opacity 0.15s ease;
+			}
+
+			.send-button:hover {
+				background: #404040;
+			}
+
+			.send-button:disabled {
+				background: #e5e5e5;
+				color: #999;
+				opacity: 1;
+				cursor: default;
+			}
+
+			.send-button svg {
+				width: 20px;
+				height: 20px;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 2.2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+
+			.connection-status {
+				margin-top: 6px;
+				color: #8490a0;
+				font-size: 12px;
 			}
 
 			.connection-status {
@@ -690,6 +749,16 @@
 					opacity: 0.7;
 				}
 			}
+
+			.message-copy-button.copied {
+				opacity: 1;
+				color: #16a34a;
+			}
+
+			.message-copy-button.copied:hover {
+				background: transparent;
+				color: #16a34a;
+			}
 		</style>
 	</head>
 
@@ -773,8 +842,12 @@
 				<div class="chat-input-row">
 					<textarea class="chat-input" id="chatInput" rows="1" maxlength="3000" placeholder="输入消息，按 Enter 发送，Shift + Enter 换行"></textarea>
 
-					<button class="send-button" id="sendButton">
-						发送
+					<button class="send-button" id="sendButton" type="button"
+							title="发送消息" aria-label="发送消息">
+						<svg viewBox="0 0 24 24">
+							<path d="M12 19V5"></path>
+							<path d="M5 12l7-7 7 7"></path>
+						</svg>
 					</button>
 				</div>
 
@@ -1587,6 +1660,15 @@
 						}
 
 						copyButton.title = "已复制";
+						copyButton.classList.add("copied");
+						copyButton.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"></path></svg>';
+
+						setTimeout(function () {
+							copyButton.classList.remove("copied");
+							copyButton.title = "复制消息";
+							copyButton.innerHTML = '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>';
+						}, 1500);
+						
 					} catch (error) {
 						console.error("复制消息失败", error);
 						copyButton.title = "复制失败";
@@ -1730,7 +1812,18 @@
 				chatInput.style.overflowY = chatInput.scrollHeight > maxHeight ? "auto" : "hidden";
 			}
 
-			chatInput.addEventListener("input", adjustChatInputHeight);
+			function updateSendButtonState() {
+				const hasContent = chatInput.value.trim().length > 0;
+				sendButton.disabled = !hasContent;
+				sendButton.title = hasContent ? "发送消息" : "请输入消息";
+			}
+
+			chatInput.addEventListener("input", function () {
+				adjustChatInputHeight();
+				updateSendButtonState();
+			});
+
+			updateSendButtonState();
 
 			// 发送消息
 			function sendMessage() {
@@ -1761,6 +1854,7 @@
 
 				chatInput.value = "";
 				adjustChatInputHeight();
+				updateSendButtonState();
 				chatInput.focus();
 			}
 
@@ -1923,11 +2017,10 @@
 
 				const fileButton = document.createElement("button");
 				fileButton.type = "button";
-				fileButton.textContent = "文件";
-				fileButton.style.width = "70px";
-				fileButton.style.height = "40px";
-				fileButton.style.flexShrink = "0";
+				fileButton.className = "attach-button";
+				fileButton.textContent = "+";
 				fileButton.title = "选择文件上传";
+				fileButton.setAttribute("aria-label", "选择文件上传");
 				fileButton.disabled = true;
 
 				const fileInput = document.createElement("input");
