@@ -2487,6 +2487,31 @@
 
 				const tasks = [];
 
+				// ==================== 剪贴板图片暂存 ====================
+
+				const pendingPasteFiles = [];
+				const pastePreviewPanel = document.createElement("div");
+
+				pastePreviewPanel.style.display = "none";
+				pastePreviewPanel.style.marginBottom = "10px";
+				pastePreviewPanel.style.padding = "10px";
+				pastePreviewPanel.style.background = "#f7f9fc";
+				pastePreviewPanel.style.border = "1px solid #e5e8ed";
+				pastePreviewPanel.style.borderRadius = "10px";
+
+				const pastePreviewTitle = document.createElement("div");
+				pastePreviewTitle.style.fontSize = "12px";
+				pastePreviewTitle.style.color = "#687386";
+				pastePreviewTitle.style.marginBottom = "8px";
+
+				const pastePreviewList = document.createElement("div");
+				pastePreviewList.style.display = "flex";
+				pastePreviewList.style.flexWrap = "wrap";
+				pastePreviewList.style.gap = "10px";
+
+				pastePreviewPanel.appendChild(pastePreviewTitle);
+				pastePreviewPanel.appendChild(pastePreviewList);
+
 				// ==================== 图片预览 ====================
 
 				const previewImageTypes = new Set([
@@ -2716,6 +2741,7 @@
 				inputRow.insertBefore(fileButton, chatInputElement);
 				chatInputArea.appendChild(fileInput);
 				chatInputArea.insertBefore(queuePanel, inputRow);
+				chatInputArea.insertBefore(pastePreviewPanel, inputRow);
 				chatInputArea.appendChild(fileStatus);
 
 				// ==================== 工具方法 ====================
@@ -3352,6 +3378,244 @@
 					renderQueue();
 					processQueue();
 				}
+
+				// ==================== 发送剪贴板图片 ====================
+
+				function sendPendingPasteImages() {
+					if (pendingPasteFiles.length === 0) {
+						return false;
+					}
+
+					if (!currentUser) {
+						alert("请先登录");
+						return true;
+					}
+
+					if (maxFileSizeMB <= 0) {
+						setFileStatus("尚未获取服务器上传限制，请稍后再试", true);
+						return true;
+					}
+
+					const files = pendingPasteFiles.map(function (item) {
+						return item.file;
+					});
+
+					const oversizedFile = files.find(function (file) {
+						return file.size > maxFileSizeMB * 1024 * 1024;
+					});
+
+					if (oversizedFile) {
+						setFileStatus(
+								"图片超过服务器单文件上传限制：" + maxFileSizeMB + " MB",
+								true
+						);
+						return true;
+					}
+
+					// 进入现有上传队列，不重新实现上传逻辑。
+					enqueueFiles(files);
+
+					clearPasteImages();
+
+					return true;
+				}
+
+				const sendButtonElement = document.getElementById("sendButton");
+
+// 捕获阶段优先于原来的 sendMessage 点击事件。
+				sendButtonElement.addEventListener("click", function (event) {
+					if (pendingPasteFiles.length === 0) {
+						return;
+					}
+
+					event.preventDefault();
+					event.stopImmediatePropagation();
+
+					sendPendingPasteImages();
+				}, true);
+
+				document.addEventListener("keydown", function (event) {
+					if (event.target !== chatInputElement) {
+						return;
+					}
+
+					if (event.key !== "Enter" ||
+							event.shiftKey ||
+							event.isComposing ||
+							pendingPasteFiles.length === 0) {
+						return;
+					}
+
+					event.preventDefault();
+					event.stopImmediatePropagation();
+
+					sendPendingPasteImages();
+				}, true);
+
+				// ==================== 剪贴板图片预览 ====================
+
+				function renderPastePreview() {
+					pastePreviewList.innerHTML = "";
+
+					pastePreviewTitle.textContent =
+							"待发送图片（" + pendingPasteFiles.length + "）";
+
+					pastePreviewPanel.style.display =
+							pendingPasteFiles.length > 0 ? "block" : "none";
+
+					pendingPasteFiles.forEach(function (item, index) {
+						const card = document.createElement("div");
+
+						card.style.position = "relative";
+						card.style.width = "100px";
+						card.style.padding = "5px";
+						card.style.background = "#fff";
+						card.style.border = "1px solid #e5e8ed";
+						card.style.borderRadius = "8px";
+
+						const image = document.createElement("img");
+						image.src = item.url;
+						image.alt = item.file.name;
+
+						image.style.display = "block";
+						image.style.width = "90px";
+						image.style.height = "75px";
+						image.style.objectFit = "contain";
+						image.style.borderRadius = "5px";
+
+						const name = document.createElement("div");
+						name.textContent = item.file.name;
+						name.title = item.file.name;
+						name.style.fontSize = "11px";
+						name.style.marginTop = "5px";
+						name.style.overflow = "hidden";
+						name.style.textOverflow = "ellipsis";
+						name.style.whiteSpace = "nowrap";
+
+						const removeButton = document.createElement("button");
+						removeButton.type = "button";
+						removeButton.textContent = "×";
+						removeButton.title = "移除图片";
+
+						removeButton.style.position = "absolute";
+						removeButton.style.top = "-7px";
+						removeButton.style.right = "-7px";
+						removeButton.style.width = "22px";
+						removeButton.style.height = "22px";
+						removeButton.style.padding = "0";
+						removeButton.style.border = "none";
+						removeButton.style.borderRadius = "50%";
+						removeButton.style.background = "#555";
+						removeButton.style.color = "#fff";
+						removeButton.style.cursor = "pointer";
+						removeButton.style.lineHeight = "22px";
+
+						removeButton.addEventListener("click", function () {
+							URL.revokeObjectURL(item.url);
+							pendingPasteFiles.splice(index, 1);
+							renderPastePreview();
+							updatePasteSendButton();
+						});
+
+						card.appendChild(image);
+						card.appendChild(name);
+						card.appendChild(removeButton);
+
+						pastePreviewList.appendChild(card);
+					});
+				}
+
+				function updatePasteSendButton() {
+					const sendButton = document.getElementById("sendButton");
+
+					if (!sendButton) {
+						return;
+					}
+
+					sendButton.disabled =
+							pendingPasteFiles.length === 0 &&
+							!chatInputElement.value.trim();
+
+					sendButton.title = sendButton.disabled
+							? "请输入消息或粘贴图片"
+							: "发送消息";
+				}
+
+				function clearPasteImages() {
+					pendingPasteFiles.forEach(function (item) {
+						URL.revokeObjectURL(item.url);
+					});
+
+					pendingPasteFiles.length = 0;
+
+					renderPastePreview();
+					updatePasteSendButton();
+				}
+
+				// ==================== 剪贴板图片粘贴 ====================
+
+				chatInputElement.addEventListener("paste", function (event) {
+					const clipboardData = event.clipboardData;
+
+					if (!clipboardData || !clipboardData.items) {
+						return;
+					}
+
+					const imageFiles = [];
+
+					for (const item of clipboardData.items) {
+						if (item.kind !== "file") {
+							continue;
+						}
+
+						const mimeType = String(item.type || "").toLowerCase();
+
+						if (!previewImageTypes.has(mimeType)) {
+							continue;
+						}
+
+						const blob = item.getAsFile();
+
+						if (!blob || blob.size <= 0) {
+							continue;
+						}
+
+						const extension = mimeType.split("/")[1] || "png";
+
+						const file = new File(
+								[blob],
+								"pasted-image-" + Date.now() + "." + extension,
+								{
+									type: mimeType,
+									lastModified: Date.now()
+								}
+						);
+
+						imageFiles.push(file);
+					}
+
+					if (imageFiles.length === 0) {
+						// 普通文本粘贴，保留浏览器默认行为。
+						return;
+					}
+
+					// 剪贴板包含图片，阻止默认粘贴行为。
+					event.preventDefault();
+
+					imageFiles.forEach(function (file) {
+						pendingPasteFiles.push({
+							file: file,
+							url: URL.createObjectURL(file)
+						});
+					});
+
+					renderPastePreview();
+					updatePasteSendButton();
+
+					console.log("剪贴板图片已暂存：", imageFiles.length);
+				});
+				
+				
 
 				// ==================== 文件选择 ====================
 
